@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.domain.DurationEstimator
+import kotlin.math.abs
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
@@ -19,7 +21,8 @@ import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel()) {
@@ -154,8 +157,9 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             categories = categories,
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
-            onConfirm = { title, categoryId, minutes, start ->
-                vm.addActivity(title, categoryId, minutes, start)
+            loadHistory = { vm.durationHistory(it) },
+            onConfirm = { title, categoryId, minutes, start, suggested ->
+                vm.addActivity(title, categoryId, minutes, start, suggested)
                 showAddDialog = false
             }
         )
@@ -168,8 +172,9 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             categories = categories,
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
-            onConfirm = { title, categoryId, minutes, start ->
-                vm.editActivity(activity.id, title, categoryId, minutes, start)
+            loadHistory = { vm.durationHistory(it) },
+            onConfirm = { title, categoryId, minutes, start, suggested ->
+                vm.editActivity(activity.id, title, categoryId, minutes, start, suggested)
                 editing = null
             }
         )
@@ -392,6 +397,7 @@ private fun FinishDialog(
                     value = minutes,
                     onValueChange = { input -> minutes = input.filter { it.isDigit() } },
                     label = { Text("Durata reală (minute)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true
                 )
 
@@ -429,7 +435,8 @@ private fun ActivityDialog(
     categories: List<Category>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
-    onConfirm: (String, Long?, Int?, Int?) -> Unit
+    loadHistory: suspend (Long) -> List<DurationEstimator.Sample>,
+    onConfirm: (String, Long?, Int?, Int?, Int?) -> Unit
 ) {
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var minutes by remember { mutableStateOf(initial?.userEstimatedMinutes?.toString() ?: "") }
@@ -439,6 +446,17 @@ private fun ActivityDialog(
     var newCategory by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
     var startMinute by remember { mutableStateOf(initial?.plannedStartMinute) }
+
+    // istoricul categoriei alese; se reîncarcă la schimbarea categoriei
+    val history by produceState(emptyList<DurationEstimator.Sample>(), selectedCategory?.id) {
+        value = selectedCategory?.id?.let { loadHistory(it) } ?: emptyList()
+    }
+
+    // propunerea acceptată cu „Folosește” (ca să nu recalculăm peste ea)
+    var appliedSuggestion by remember { mutableStateOf(initial?.estimatedMinutes) }
+    val typedMinutes = minutes.toIntOrNull()
+    val isApplied = appliedSuggestion != null && typedMinutes == appliedSuggestion
+    val suggestion = if (isApplied) null else DurationEstimator.suggest(history, typedMinutes)
     var showTimePicker by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -511,8 +529,28 @@ private fun ActivityDialog(
                     value = minutes,
                     onValueChange = { input -> minutes = input.filter { it.isDigit() } },
                     label = { Text("Durată estimată (minute)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true
                 )
+
+                // recomandarea duratei pe baza istoricului
+                if (isApplied) {
+                    Text(
+                        "✓ Durată propusă pe baza istoricului",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else if (suggestion != null) {
+                    SuggestionHint(
+                        suggestion = suggestion,
+                        userEstimate = typedMinutes,
+                        categoryName = selectedCategory?.name ?: "",
+                        onUse = {
+                            minutes = suggestion.minutes.toString()
+                            appliedSuggestion = suggestion.minutes
+                        }
+                    )
+                }
 
                 // ora de start (opțională)
                 Row(
@@ -531,7 +569,8 @@ private fun ActivityDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    onConfirm(title, selectedCategory?.id, minutes.toIntOrNull(), startMinute)
+                    val suggested = if (isApplied) appliedSuggestion else suggestion?.minutes
+                    onConfirm(title, selectedCategory?.id, minutes.toIntOrNull(), startMinute, suggested)
                 },
                 enabled = title.isNotBlank()
             ) { Text("Salvează") }
@@ -550,6 +589,52 @@ private fun ActivityDialog(
                 showTimePicker = false
             }
         )
+    }
+}
+
+// caseta cu propunerea de durată și explicația ei
+@Composable
+private fun SuggestionHint(
+    suggestion: DurationEstimator.Suggestion,
+    userEstimate: Int?,
+    categoryName: String,
+    onUse: () -> Unit
+) {
+    val deviation = suggestion.deviationPercent
+    val realistic = userEstimate != null && abs(deviation) <= 10
+
+    val message = when {
+        userEstimate == null -> "De obicei durează ~${suggestion.minutes} min"
+        realistic -> "Estimarea pare realistă"
+        deviation > 0 -> "De obicei îți ia cu $deviation% mai mult · propunere ~${suggestion.minutes} min"
+        else -> "De obicei îți ia cu ${abs(deviation)}% mai puțin · propunere ~${suggestion.minutes} min"
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    "pe baza ultimelor ${suggestion.sampleSize} activități din $categoryName",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            if (!realistic) {
+                TextButton(onClick = onUse) { Text("Folosește") }
+            }
+        }
     }
 }
 

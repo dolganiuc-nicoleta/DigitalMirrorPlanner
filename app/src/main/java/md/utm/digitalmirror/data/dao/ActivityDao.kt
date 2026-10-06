@@ -53,4 +53,15 @@ interface ActivityDao {
 
     @Query("SELECT * FROM activity WHERE date BETWEEN :from AND :to")
     fun observeRange(from: String, to: String): Flow<List<Activity>>
+
+    @Query("""
+    SELECT * FROM activity
+    WHERE categoryId = :categoryId
+      AND state = 'DONE'
+      AND userEstimatedMinutes > 0
+      AND actualMinutes IS NOT NULL
+    ORDER BY date DESC
+    LIMIT :limit
+""")
+    suspend fun getDurationHistory(categoryId: Long, limit: Int): List<Activity>
 }

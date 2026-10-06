@@ -7,7 +7,7 @@ import md.utm.digitalmirror.data.dao.WorkSessionDao
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.WorkSession
-
+import md.utm.digitalmirror.domain.DurationEstimator
 class PlannerRepository(
     private val activityDao: ActivityDao,
     private val categoryDao: CategoryDao,
@@ -96,6 +96,15 @@ class PlannerRepository(
             )
         )
     }
+
+    suspend fun durationHistory(categoryId: Long): List<DurationEstimator.Sample> =
+        activityDao.getDurationHistory(categoryId, 20).map {
+            DurationEstimator.Sample(
+                estimatedMinutes = it.userEstimatedMinutes ?: 0,
+                actualMinutes = it.actualMinutes ?: 0
+            )
+        }
+
     fun observeActivitiesInRange(from: String, to: String): Flow<List<Activity>> =
         activityDao.observeRange(from, to)
 }

@@ -12,6 +12,7 @@ import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.domain.DurationEstimator
 import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -86,7 +87,14 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         if (name.isNotBlank()) repo.addCategory(name.trim())
     }
 
-    fun addActivity(title: String, categoryId: Long?, estimatedMinutes: Int?, startMinute: Int?) =
+    // suggestedMinutes = ce a propus aplicația din istoric (se salvează separat de estimarea utilizatorului)
+    fun addActivity(
+        title: String,
+        categoryId: Long?,
+        estimatedMinutes: Int?,
+        startMinute: Int?,
+        suggestedMinutes: Int?
+    ) =
         viewModelScope.launch {
             if (title.isBlank()) return@launch
             repo.addActivity(
@@ -95,7 +103,7 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
                     categoryId = categoryId,
                     date = _date.value,
                     plannedStartMinute = startMinute,
-                    estimatedMinutes = null,
+                    estimatedMinutes = suggestedMinutes,
                     userEstimatedMinutes = estimatedMinutes,
                     actualMinutes = null
                 )
@@ -107,7 +115,8 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         title: String,
         categoryId: Long?,
         estimatedMinutes: Int?,
-        startMinute: Int?
+        startMinute: Int?,
+        suggestedMinutes: Int?
     ) = viewModelScope.launch {
         if (title.isBlank()) return@launch
         // citim varianta proaspătă din baza de date, ca să nu pierdem timpul cronometrat între timp
@@ -117,10 +126,15 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
                 title = title.trim(),
                 categoryId = categoryId,
                 userEstimatedMinutes = estimatedMinutes,
-                plannedStartMinute = startMinute
+                plannedStartMinute = startMinute,
+                estimatedMinutes = suggestedMinutes ?: fresh.estimatedMinutes
             )
         )
     }
+
+    // istoricul de durate pentru o categorie, folosit de recomandare
+    suspend fun durationHistory(categoryId: Long): List<DurationEstimator.Sample> =
+        repo.durationHistory(categoryId)
 
     fun postponeActivity(activity: Activity, newDate: String) = viewModelScope.launch {
         repo.postponeActivity(activity.id, newDate)
