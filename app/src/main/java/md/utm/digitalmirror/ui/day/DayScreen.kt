@@ -13,8 +13,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import kotlinx.coroutines.delay
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -27,7 +29,10 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
     val running by vm.runningSession.collectAsState()
     val finishDraft by vm.finishDraft.collectAsState()
     val runningOffset by vm.runningOffset.collectAsState()
+
     var showAddDialog by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
+    var postponing by remember { mutableStateOf<Activity?>(null) }   // activitatea pentru care alegem o zi
 
     LaunchedEffect(Unit) { vm.refreshRunning() }
 
@@ -106,6 +111,12 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                         offsetMillis = runningOffset,
                         onToggleTimer = { vm.toggleTimer(activity) },
                         onFinish = { vm.requestFinish(activity) },
+                        onEdit = { editing = activity },
+                        onPostponeTomorrow = {
+                            val tomorrow = LocalDate.parse(activity.date).plusDays(1).toString()
+                            vm.postponeActivity(activity, tomorrow)
+                        },
+                        onPostponePick = { postponing = activity },
                         onDelete = { vm.deleteActivity(activity) }
                     )
                 }
@@ -113,8 +124,10 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
         }
     }
 
+    // adăugare
     if (showAddDialog) {
-        AddActivityDialog(
+        ActivityDialog(
+            initial = null,
             categories = categories,
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
@@ -125,6 +138,33 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
         )
     }
 
+    // editare
+    editing?.let { activity ->
+        ActivityDialog(
+            initial = activity,
+            categories = categories,
+            onDismiss = { editing = null },
+            onAddCategory = { vm.addCategory(it) },
+            onConfirm = { title, categoryId, minutes, start ->
+                vm.editActivity(activity.id, title, categoryId, minutes, start)
+                editing = null
+            }
+        )
+    }
+
+    // amânare pe o zi aleasă
+    postponing?.let { activity ->
+        PostponeDatePicker(
+            fromDate = activity.date,
+            onDismiss = { postponing = null },
+            onConfirm = { newDate ->
+                vm.postponeActivity(activity, newDate)
+                postponing = null
+            }
+        )
+    }
+
+    // finalizare
     finishDraft?.let { draft ->
         FinishDialog(
             draft = draft,
@@ -142,6 +182,9 @@ private fun ActivityRow(
     offsetMillis: Long,
     onToggleTimer: () -> Unit,
     onFinish: () -> Unit,
+    onEdit: () -> Unit,
+    onPostponeTomorrow: () -> Unit,
+    onPostponePick: () -> Unit,
     onDelete: () -> Unit
 ) {
     val isClosed = activity.state in setOf("DONE", "PARTIAL", "ABANDONED")
@@ -169,6 +212,7 @@ private fun ActivityRow(
                 activity.userEstimatedMinutes?.let { add("estimat ${it}m") }
                 if (!isRunning) activity.actualMinutes?.let { add("real ${it}m") }
                 add(stateLabel(activity.state))
+                postponedLabel(activity.postponedCount)?.let { add(it) }
             }.joinToString(" · ")
 
             Text(
@@ -190,7 +234,7 @@ private fun ActivityRow(
 
             Spacer(Modifier.height(8.dp))
 
-            // butoanele: acțiunile principale la stânga, Șterge la dreapta
+            // acțiunile principale la stânga, meniul ⋮ la dreapta
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -216,8 +260,33 @@ private fun ActivityRow(
 
                 Spacer(Modifier.weight(1f))
 
-                TextButton(onClick = onDelete, contentPadding = compact) {
-                    Text("Șterge", color = MaterialTheme.colorScheme.error, maxLines = 1)
+                Box {
+                    var menuOpen by remember { mutableStateOf(false) }
+
+                    TextButton(onClick = { menuOpen = true }, contentPadding = compact) {
+                        Text("⋮", style = MaterialTheme.typography.titleMedium)
+                    }
+
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Editează") },
+                            onClick = { menuOpen = false; onEdit() }
+                        )
+                        if (!isClosed) {
+                            DropdownMenuItem(
+                                text = { Text("Amână pe mâine") },
+                                onClick = { menuOpen = false; onPostponeTomorrow() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Amână pe altă zi…") },
+                                onClick = { menuOpen = false; onPostponePick() }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Șterge", color = MaterialTheme.colorScheme.error) },
+                            onClick = { menuOpen = false; onDelete() }
+                        )
+                    }
                 }
             }
         }
@@ -277,25 +346,29 @@ private fun FinishDialog(
     )
 }
 
+// formular comun pentru adăugare (initial = null) și editare (initial = activitatea)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddActivityDialog(
+private fun ActivityDialog(
+    initial: Activity?,
     categories: List<Category>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
     onConfirm: (String, Long?, Int?, Int?) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var minutes by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf<Category?>(null) }
+    var title by remember { mutableStateOf(initial?.title ?: "") }
+    var minutes by remember { mutableStateOf(initial?.userEstimatedMinutes?.toString() ?: "") }
+    var selectedCategory by remember {
+        mutableStateOf(categories.find { it.id == initial?.categoryId })
+    }
     var newCategory by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
-    var startMinute by remember { mutableStateOf<Int?>(null) }
+    var startMinute by remember { mutableStateOf(initial?.plannedStartMinute) }
     var showTimePicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Activitate nouă") },
+        title = { Text(if (initial == null) "Activitate nouă" else "Editează activitatea") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
@@ -321,6 +394,13 @@ private fun AddActivityDialog(
                         expanded = expanded,
                         onDismissRequest = { expanded = false }
                     ) {
+                        DropdownMenuItem(
+                            text = { Text("fără categorie") },
+                            onClick = {
+                                selectedCategory = null
+                                expanded = false
+                            }
+                        )
                         categories.forEach { category ->
                             DropdownMenuItem(
                                 text = { Text(category.name) },
@@ -377,7 +457,8 @@ private fun AddActivityDialog(
             TextButton(
                 onClick = {
                     onConfirm(title, selectedCategory?.id, minutes.toIntOrNull(), startMinute)
-                }
+                },
+                enabled = title.isNotBlank()
             ) { Text("Salvează") }
         },
         dismissButton = {
@@ -424,6 +505,46 @@ private fun TimePickerDialog(
     )
 }
 
+// calendar pentru amânare: se pot alege doar zile de după data activității
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PostponeDatePicker(
+    fromDate: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    val minDate = LocalDate.parse(fromDate).plusDays(1)
+    val minMillis = minDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = minMillis,
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= minMillis
+            override fun isSelectableYear(year: Int) = year >= minDate.year
+        }
+    )
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    state.selectedDateMillis?.let { millis ->
+                        val picked = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        onConfirm(picked.toString())
+                    }
+                },
+                enabled = state.selectedDateMillis != null
+            ) { Text("Amână") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Anulează") }
+        }
+    ) {
+        DatePicker(state = state)
+    }
+}
+
 private fun stateLabel(state: String) = when (state) {
     "PLANNED" -> "planificată"
     "IN_PROGRESS" -> "în curs"
@@ -432,6 +553,12 @@ private fun stateLabel(state: String) = when (state) {
     "POSTPONED" -> "amânată"
     "ABANDONED" -> "abandonată"
     else -> state
+}
+
+private fun postponedLabel(count: Int): String? = when {
+    count <= 0 -> null
+    count == 1 -> "amânată o dată"
+    else -> "amânată de $count ori"
 }
 
 // formatare dată și oră

@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-
+import androidx.room.ColumnInfo
 @Entity(
     tableName = "activity",
     foreignKeys = [ForeignKey(
@@ -26,5 +26,7 @@ data class Activity(
     val actualMinutes: Int?,             // completat la închiderea zilei
     val state: String = "PLANNED",       // PLANNED, IN_PROGRESS, DONE, PARTIAL, POSTPONED, ABANDONED
     val note: String = "",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0")
+val postponedCount: Int = 0
 )

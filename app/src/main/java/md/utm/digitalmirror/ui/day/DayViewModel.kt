@@ -46,17 +46,22 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
 
     // 3. restaurează cronometrul dacă aplicația a fost închisă cu el pornit
     init {
-        viewModelScope.launch {
-            val session = repo.runningSession()
-            session?.let { _runningOffset.value = repo.closedMillis(it.activityId) }
-            _runningSession.value = session
-        }
+        refreshRunning()
     }
 
-    // 4. acțiuni
+    fun refreshRunning() = viewModelScope.launch { syncRunning() }
+
+    private suspend fun syncRunning() {
+        val session = repo.runningSession()
+        session?.let { _runningOffset.value = repo.closedMillis(it.activityId) }
+        _runningSession.value = session
+    }
+
+    // 4. navigare între zile
     fun changeDate(newDate: String) {
         _date.value = newDate
     }
+
     fun previousDay() {
         _date.value = LocalDate.parse(_date.value).minusDays(1).toString()
     }
@@ -69,12 +74,7 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         _date.value = LocalDate.now().toString()
     }
 
-    fun refreshRunning() = viewModelScope.launch {
-        val session = repo.runningSession()
-        session?.let { _runningOffset.value = repo.closedMillis(it.activityId) }
-        _runningSession.value = session
-    }
-
+    // 5. categorii și activități
     fun addCategory(name: String) = viewModelScope.launch {
         if (name.isNotBlank()) repo.addCategory(name.trim())
     }
@@ -94,6 +94,45 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
                 )
             )
         }
+
+    fun editActivity(
+        activityId: Long,
+        title: String,
+        categoryId: Long?,
+        estimatedMinutes: Int?,
+        startMinute: Int?
+    ) = viewModelScope.launch {
+        if (title.isBlank()) return@launch
+        // citim varianta proaspătă din baza de date, ca să nu pierdem timpul cronometrat între timp
+        val fresh = repo.getActivity(activityId) ?: return@launch
+        repo.updateActivity(
+            fresh.copy(
+                title = title.trim(),
+                categoryId = categoryId,
+                userEstimatedMinutes = estimatedMinutes,
+                plannedStartMinute = startMinute
+            )
+        )
+    }
+
+    fun postponeActivity(activity: Activity, newDate: String) = viewModelScope.launch {
+        repo.postponeActivity(activity.id, newDate)
+        syncRunning()
+    }
+
+    fun setState(activity: Activity, state: String) = viewModelScope.launch {
+        repo.updateActivity(activity.copy(state = state))
+    }
+
+    fun deleteActivity(activity: Activity) = viewModelScope.launch {
+        repo.runningSession()
+            ?.takeIf { it.activityId == activity.id }
+            ?.let { repo.stopTimer(it) }
+        repo.deleteActivity(activity)
+        syncRunning()
+    }
+
+    // 6. cronometru și finalizare
     fun toggleTimer(activity: Activity) = viewModelScope.launch {
         val running = repo.runningSession()
         if (running != null && running.activityId == activity.id) {
@@ -106,18 +145,6 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setState(activity: Activity, state: String) = viewModelScope.launch {
-        repo.updateActivity(activity.copy(state = state))
-    }
-
-    fun deleteActivity(activity: Activity) = viewModelScope.launch {
-        repo.runningSession()
-            ?.takeIf { it.activityId == activity.id }
-            ?.let { repo.stopTimer(it) }
-        repo.deleteActivity(activity)
-        _runningSession.value = repo.runningSession()
-    }
-
     fun requestFinish(activity: Activity) = viewModelScope.launch {
         _finishDraft.value = FinishDraft(activity, repo.trackedMinutes(activity.id))
     }
@@ -125,7 +152,7 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
     fun confirmFinish(minutes: Int, state: String) = viewModelScope.launch {
         val draft = _finishDraft.value ?: return@launch
         repo.finishActivity(draft.activity.id, minutes, state)
-        _runningSession.value = repo.runningSession()
+        syncRunning()
         _finishDraft.value = null
     }
 

@@ -78,4 +78,22 @@ class PlannerRepository(
             activityDao.update(it.copy(actualMinutes = minutes))
         }
     }
+
+    suspend fun getActivity(id: Long): Activity? = activityDao.getById(id)
+
+    suspend fun postponeActivity(activityId: Long, newDate: String) {
+        // dacă rulează cronometrul pe ea, îl oprim întâi (se salvează timpul lucrat)
+        sessionDao.getRunning()
+            ?.takeIf { it.activityId == activityId }
+            ?.let { stopTimer(it) }
+
+        val fresh = activityDao.getById(activityId) ?: return
+        activityDao.update(
+            fresh.copy(
+                date = newDate,
+                state = if ((fresh.actualMinutes ?: 0) > 0) "IN_PROGRESS" else "PLANNED",
+                postponedCount = fresh.postponedCount + 1
+            )
+        )
+    }
 }
