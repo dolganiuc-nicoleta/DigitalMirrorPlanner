@@ -14,6 +14,7 @@ import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import kotlinx.coroutines.delay
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -27,12 +28,13 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
     val finishDraft by vm.finishDraft.collectAsState()
     val runningOffset by vm.runningOffset.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) { vm.refreshRunning() }
 
-    val isToday = date == LocalDate.now().toString()   // NOU
+    val isToday = date == LocalDate.now().toString()
 
     Scaffold(
-        // NOU: bara de sus cu navigare între zile
+        // bara de sus cu navigare între zile
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -57,9 +59,9 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 }
             )
         },
-
+        // butonul de închidere, doar pentru azi și zilele trecute
         bottomBar = {
-            if (date <= LocalDate.now().toString()) {   // doar azi și zilele trecute
+            if (date <= LocalDate.now().toString()) {
                 Surface(tonalElevation = 3.dp) {
                     Button(
                         onClick = { onCloseDay(date) },
@@ -71,8 +73,6 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 }
             }
         },
-
-
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) { Text("+") }
         }
@@ -83,7 +83,6 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                // NOU: mesaj diferit pentru azi și pentru alte zile
                 Text(
                     if (isToday) "Nicio activitate pentru astăzi"
                     else "Nicio activitate în această zi"
@@ -95,7 +94,11 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(activities, key = { it.id }) { activity ->
+                // sortate după ora de start, cele fără oră la final
+                items(
+                    activities.sortedWith(compareBy(nullsLast()) { it.plannedStartMinute }),
+                    key = { it.id }
+                ) { activity ->
                     ActivityRow(
                         activity = activity,
                         categoryName = categories.find { it.id == activity.categoryId }?.name,
@@ -115,8 +118,8 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             categories = categories,
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
-            onConfirm = { title, categoryId, minutes ->
-                vm.addActivity(title, categoryId, minutes)
+            onConfirm = { title, categoryId, minutes, start ->
+                vm.addActivity(title, categoryId, minutes, start)
                 showAddDialog = false
             }
         )
@@ -136,10 +139,10 @@ private fun ActivityRow(
     activity: Activity,
     categoryName: String?,
     runningSince: Long?,
+    offsetMillis: Long,
     onToggleTimer: () -> Unit,
     onFinish: () -> Unit,
-    onDelete: () -> Unit,
-    offsetMillis: Long
+    onDelete: () -> Unit
 ) {
     val isClosed = activity.state in setOf("DONE", "PARTIAL", "ABANDONED")
     val isRunning = runningSince != null
@@ -158,6 +161,10 @@ private fun ActivityRow(
             Text(activity.title, fontWeight = FontWeight.Medium)
 
             val details = buildList {
+                activity.plannedStartMinute?.let { start ->
+                    val end = activity.userEstimatedMinutes?.let { start + it }
+                    add(if (end != null) "${formatMinute(start)}–${formatMinute(end)}" else formatMinute(start))
+                }
                 categoryName?.let { add(it) }
                 activity.userEstimatedMinutes?.let { add("estimat ${it}m") }
                 if (!isRunning) activity.actualMinutes?.let { add("real ${it}m") }
@@ -183,20 +190,35 @@ private fun ActivityRow(
 
             Spacer(Modifier.height(8.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // butoanele: acțiunile principale la stânga, Șterge la dreapta
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val compact = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+
                 if (!isClosed) {
-                    OutlinedButton(onClick = onToggleTimer) {
+                    OutlinedButton(onClick = onToggleTimer, contentPadding = compact) {
                         Text(
                             when {
                                 isRunning -> "Pauză"
                                 activity.state == "IN_PROGRESS" -> "Continuă"
                                 else -> "Pornește"
-                            }
+                            },
+                            maxLines = 1
                         )
                     }
-                    OutlinedButton(onClick = onFinish) { Text("Finalizează") }
+                    OutlinedButton(onClick = onFinish, contentPadding = compact) {
+                        Text("Finalizează", maxLines = 1)
+                    }
                 }
-                OutlinedButton(onClick = onDelete) { Text("Șterge") }
+
+                Spacer(Modifier.weight(1f))
+
+                TextButton(onClick = onDelete, contentPadding = compact) {
+                    Text("Șterge", color = MaterialTheme.colorScheme.error, maxLines = 1)
+                }
             }
         }
     }
@@ -219,7 +241,7 @@ private fun FinishDialog(
                 Text(draft.activity.title, fontWeight = FontWeight.Medium)
 
                 draft.activity.userEstimatedMinutes?.let {
-                    Text("Estimat ${it} min · cronometrat ${draft.trackedMinutes} min")
+                    Text("Estimat $it min · cronometrat ${draft.trackedMinutes} min")
                 }
 
                 OutlinedTextField(
@@ -255,29 +277,21 @@ private fun FinishDialog(
     )
 }
 
-private fun stateLabel(state: String) = when (state) {
-    "PLANNED" -> "planificată"
-    "IN_PROGRESS" -> "în curs"
-    "DONE" -> "finalizată"
-    "PARTIAL" -> "parțial"
-    "POSTPONED" -> "amânată"
-    "ABANDONED" -> "abandonată"
-    else -> state
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddActivityDialog(
     categories: List<Category>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
-    onConfirm: (String, Long?, Int?) -> Unit
+    onConfirm: (String, Long?, Int?, Int?) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var minutes by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<Category?>(null) }
     var newCategory by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
+    var startMinute by remember { mutableStateOf<Int?>(null) }
+    var showTimePicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -301,9 +315,7 @@ private fun AddActivityDialog(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Categorie") },
-                        modifier = Modifier.menuAnchor(
-                            MenuAnchorType.PrimaryNotEditable
-                        )
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
                     )
                     ExposedDropdownMenu(
                         expanded = expanded,
@@ -346,12 +358,25 @@ private fun AddActivityDialog(
                     label = { Text("Durată estimată (minute)") },
                     singleLine = true
                 )
+
+                // ora de start (opțională)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(onClick = { showTimePicker = true }) {
+                        Text(startMinute?.let { "Ora: ${formatMinute(it)}" } ?: "Alege ora de start")
+                    }
+                    if (startMinute != null) {
+                        TextButton(onClick = { startMinute = null }) { Text("Fără oră") }
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    onConfirm(title, selectedCategory?.id, minutes.toIntOrNull())
+                    onConfirm(title, selectedCategory?.id, minutes.toIntOrNull(), startMinute)
                 }
             ) { Text("Salvează") }
         },
@@ -359,15 +384,59 @@ private fun AddActivityDialog(
             TextButton(onClick = onDismiss) { Text("Anulează") }
         }
     )
+
+    if (showTimePicker) {
+        TimePickerDialog(
+            initialMinute = startMinute,
+            onDismiss = { showTimePicker = false },
+            onConfirm = {
+                startMinute = it
+                showTimePicker = false
+            }
+        )
+    }
 }
 
-// NOU: afișează data ca „Vineri, 2 octombrie”
-private val roFormatter =
-    DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.forLanguageTag("ro"))
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerDialog(
+    initialMinute: Int?,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    val now = LocalTime.now()
+    val state = rememberTimePickerState(
+        initialHour = initialMinute?.div(60) ?: now.hour,
+        initialMinute = initialMinute?.rem(60) ?: 0,
+        is24Hour = true
+    )
 
-private fun formatDate(iso: String): String =
-    LocalDate.parse(iso).format(roFormatter).replaceFirstChar { it.uppercase() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ora de start") },
+        text = { TimePicker(state = state) },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Anulează") }
+        }
+    )
+}
 
+private fun stateLabel(state: String) = when (state) {
+    "PLANNED" -> "planificată"
+    "IN_PROGRESS" -> "în curs"
+    "DONE" -> "finalizată"
+    "PARTIAL" -> "parțial"
+    "POSTPONED" -> "amânată"
+    "ABANDONED" -> "abandonată"
+    else -> state
+}
+
+// formatare dată și oră
 private val ro = Locale.forLanguageTag("ro")
 private val dayFormatter = DateTimeFormatter.ofPattern("EEEE", ro)       // „sâmbătă”
 private val dateFormatter = DateTimeFormatter.ofPattern("d MMMM", ro)    // „3 octombrie”
+
+private fun formatMinute(m: Int): String = "%02d:%02d".format((m / 60) % 24, m % 60)

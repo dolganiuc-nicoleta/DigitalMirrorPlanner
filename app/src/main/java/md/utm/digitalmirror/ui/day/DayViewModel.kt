@@ -79,7 +79,7 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         if (name.isNotBlank()) repo.addCategory(name.trim())
     }
 
-    fun addActivity(title: String, categoryId: Long?, estimatedMinutes: Int?) =
+    fun addActivity(title: String, categoryId: Long?, estimatedMinutes: Int?, startMinute: Int?) =
         viewModelScope.launch {
             if (title.isBlank()) return@launch
             repo.addActivity(
@@ -87,14 +87,13 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
                     title = title.trim(),
                     categoryId = categoryId,
                     date = _date.value,
-                    plannedStartMinute = null,
+                    plannedStartMinute = startMinute,
                     estimatedMinutes = null,
                     userEstimatedMinutes = estimatedMinutes,
                     actualMinutes = null
                 )
             )
         }
-
     fun toggleTimer(activity: Activity) = viewModelScope.launch {
         val running = repo.runningSession()
         if (running != null && running.activityId == activity.id) {
