@@ -50,4 +50,7 @@ interface ActivityDao {
         WHERE date BETWEEN :from AND :to AND state != 'PLANNED'
     """)
     suspend fun attemptedCount(from: String, to: String): Int
+
+    @Query("SELECT * FROM activity WHERE date BETWEEN :from AND :to")
+    fun observeRange(from: String, to: String): Flow<List<Activity>>
 }

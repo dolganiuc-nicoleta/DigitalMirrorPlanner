@@ -96,4 +96,6 @@ class PlannerRepository(
             )
         )
     }
+    fun observeActivitiesInRange(from: String, to: String): Flow<List<Activity>> =
+        activityDao.observeRange(from, to)
 }

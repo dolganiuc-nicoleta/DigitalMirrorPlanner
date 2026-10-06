@@ -222,50 +222,61 @@ private fun ActivityRow(
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 4.dp, bottom = 12.dp)) {
 
-            Text(activity.title, fontWeight = FontWeight.Medium)
+            // rândul de sus: textul la stânga, meniul ⋮ la dreapta
+            Row(verticalAlignment = Alignment.Top) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(top = 4.dp)
+                ) {
+                    Text(activity.title, fontWeight = FontWeight.Medium)
 
-            val details = buildList {
-                activity.plannedStartMinute?.let { start ->
-                    val end = activity.userEstimatedMinutes?.let { start + it }
-                    add(if (end != null) "${formatMinute(start)}–${formatMinute(end)}" else formatMinute(start))
+                    val details = buildList {
+                        activity.plannedStartMinute?.let { start ->
+                            val end = activity.userEstimatedMinutes?.let { start + it }
+                            add(if (end != null) "${formatMinute(start)}–${formatMinute(end)}" else formatMinute(start))
+                        }
+                        categoryName?.let { add(it) }
+                        activity.userEstimatedMinutes?.let { add("estimat ${it}m") }
+                        if (!isRunning) activity.actualMinutes?.let { add("real ${it}m") }
+                        add(stateLabel(activity.state))
+                        postponedLabel(activity.postponedCount)?.let { add(it) }
+                    }.joinToString(" · ")
+
+                    Text(
+                        details,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (isRunning) {
+                        val h = elapsed / 3600
+                        val m = (elapsed % 3600) / 60
+                        val s = elapsed % 60
+                        Text(
+                            if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
-                categoryName?.let { add(it) }
-                activity.userEstimatedMinutes?.let { add("estimat ${it}m") }
-                if (!isRunning) activity.actualMinutes?.let { add("real ${it}m") }
-                add(stateLabel(activity.state))
-                postponedLabel(activity.postponedCount)?.let { add(it) }
-            }.joinToString(" · ")
 
-            Text(
-                details,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (isRunning) {
-                val h = elapsed / 3600
-                val m = (elapsed % 3600) / 60
-                val s = elapsed % 60
-                Text(
-                    if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
+                ActivityMenu(
+                    isClosed = isClosed,
+                    onEdit = onEdit,
+                    onPostponeTomorrow = onPostponeTomorrow,
+                    onPostponePick = onPostponePick,
+                    onDelete = onDelete
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            // acțiunile principale la stânga, meniul ⋮ la dreapta
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val compact = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-
-                if (!isClosed) {
+            // butoanele apar doar la activitățile încă deschise
+            if (!isClosed) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val compact = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     OutlinedButton(onClick = onToggleTimer, contentPadding = compact) {
                         Text(
                             when {
@@ -280,38 +291,49 @@ private fun ActivityRow(
                         Text("Finalizează", maxLines = 1)
                     }
                 }
-
-                Spacer(Modifier.weight(1f))
-
-                Box {
-                    var menuOpen by remember { mutableStateOf(false) }
-
-                    TextButton(onClick = { menuOpen = true }, contentPadding = compact) {
-                        Text("⋮", style = MaterialTheme.typography.titleMedium)
-                    }
-
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Editează") },
-                            onClick = { menuOpen = false; onEdit() }
-                        )
-                        if (!isClosed) {
-                            DropdownMenuItem(
-                                text = { Text("Amână pe mâine") },
-                                onClick = { menuOpen = false; onPostponeTomorrow() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Amână pe altă zi…") },
-                                onClick = { menuOpen = false; onPostponePick() }
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Șterge", color = MaterialTheme.colorScheme.error) },
-                            onClick = { menuOpen = false; onDelete() }
-                        )
-                    }
-                }
             }
+        }
+    }
+}
+
+// meniul ⋮ al unei activități
+@Composable
+private fun ActivityMenu(
+    isClosed: Boolean,
+    onEdit: () -> Unit,
+    onPostponeTomorrow: () -> Unit,
+    onPostponePick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Box {
+        var menuOpen by remember { mutableStateOf(false) }
+
+        TextButton(
+            onClick = { menuOpen = true },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text("⋮", style = MaterialTheme.typography.titleMedium)
+        }
+
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Editează") },
+                onClick = { menuOpen = false; onEdit() }
+            )
+            if (!isClosed) {
+                DropdownMenuItem(
+                    text = { Text("Amână pe mâine") },
+                    onClick = { menuOpen = false; onPostponeTomorrow() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Amână pe altă zi…") },
+                    onClick = { menuOpen = false; onPostponePick() }
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Șterge", color = MaterialTheme.colorScheme.error) },
+                onClick = { menuOpen = false; onDelete() }
+            )
         }
     }
 }
