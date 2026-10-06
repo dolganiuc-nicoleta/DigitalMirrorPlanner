@@ -21,4 +21,7 @@ interface ReflectionDao {
 
     @Query("SELECT * FROM reflection WHERE date BETWEEN :from AND :to ORDER BY date")
     suspend fun getRange(from: String, to: String): List<Reflection>
+
+    @Query("SELECT * FROM reflection WHERE date = :date")
+    fun observeByDate(date: String): Flow<Reflection?>
 }

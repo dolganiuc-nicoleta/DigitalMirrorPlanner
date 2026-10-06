@@ -29,6 +29,7 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
     val running by vm.runningSession.collectAsState()
     val finishDraft by vm.finishDraft.collectAsState()
     val runningOffset by vm.runningOffset.collectAsState()
+    val reflection by vm.reflection.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
@@ -37,6 +38,7 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
     LaunchedEffect(Unit) { vm.refreshRunning() }
 
     val isToday = date == LocalDate.now().toString()
+    val canClose = date <= LocalDate.now().toString()   // azi sau o zi trecută
 
     Scaffold(
         // bara de sus cu navigare între zile
@@ -64,20 +66,6 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 }
             )
         },
-        // butonul de închidere, doar pentru azi și zilele trecute
-        bottomBar = {
-            if (date <= LocalDate.now().toString()) {
-                Surface(tonalElevation = 3.dp) {
-                    Button(
-                        onClick = { onCloseDay(date) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(16.dp)
-                    ) { Text("Închide ziua") }
-                }
-            }
-        },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) { Text("+") }
         }
@@ -88,15 +76,28 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    if (isToday) "Nicio activitate pentru astăzi"
-                    else "Nicio activitate în această zi"
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        if (isToday) "Nicio activitate pentru astăzi"
+                        else "Nicio activitate în această zi"
+                    )
+                    // reflecția se poate face și într-o zi fără activități
+                    if (canClose) {
+                        Spacer(Modifier.height(16.dp))
+                        val mood = reflection?.moodScore
+                        if (mood != null) {
+                            DayClosedCard(mood = mood, onOpen = { onCloseDay(date) })
+                        } else {
+                            OutlinedButton(onClick = { onCloseDay(date) }) { Text("Închide ziua") }
+                        }
+                    }
+                }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                // jos mai mult spațiu, ca butonul + să nu acopere ultimul element
+                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // sortate după ora de start, cele fără oră la final
@@ -119,6 +120,28 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                         onPostponePick = { postponing = activity },
                         onDelete = { vm.deleteActivity(activity) }
                     )
+                }
+
+                // închiderea zilei, doar pentru azi și zilele trecute
+                if (canClose) {
+                    item {
+                        val mood = reflection?.moodScore
+                        if (mood != null) {
+                            // ziua e deja închisă → arătăm confirmarea
+                            DayClosedCard(
+                                mood = mood,
+                                onOpen = { onCloseDay(date) },
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        } else {
+                            Button(
+                                onClick = { onCloseDay(date) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) { Text("Închide ziua") }
+                        }
+                    }
                 }
             }
         }
@@ -289,6 +312,36 @@ private fun ActivityRow(
                     }
                 }
             }
+        }
+    }
+}
+
+// cardul afișat după ce reflecția zilei a fost salvată
+@Composable
+private fun DayClosedCard(
+    mood: Int,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "✓ Ziua e închisă · stare $mood/5",
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onOpen) { Text("Vezi reflecția") }
         }
     }
 }
