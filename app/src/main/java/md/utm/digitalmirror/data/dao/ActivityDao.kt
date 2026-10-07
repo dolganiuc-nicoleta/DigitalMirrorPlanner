@@ -64,4 +64,12 @@ interface ActivityDao {
     LIMIT :limit
 """)
     suspend fun getDurationHistory(categoryId: Long, limit: Int): List<Activity>
+
+    @Query("""
+    SELECT * FROM activity
+    WHERE categoryId = :categoryId AND state IN ('DONE', 'PARTIAL', 'ABANDONED')
+    ORDER BY date DESC
+    LIMIT :limit
+""")
+    suspend fun getClosedByCategory(categoryId: Long, limit: Int): List<Activity>
 }

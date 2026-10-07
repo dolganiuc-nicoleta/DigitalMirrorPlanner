@@ -8,6 +8,9 @@ import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.domain.DurationEstimator
+import md.utm.digitalmirror.domain.SlotRecommender
+import java.time.Instant
+import java.time.ZoneId
 class PlannerRepository(
     private val activityDao: ActivityDao,
     private val categoryDao: CategoryDao,
@@ -107,4 +110,15 @@ class PlannerRepository(
 
     fun observeActivitiesInRange(from: String, to: String): Flow<List<Activity>> =
         activityDao.observeRange(from, to)
+
+    suspend fun slotHistory(categoryId: Long): List<SlotRecommender.Outcome> =
+        activityDao.getClosedByCategory(categoryId, 60).mapNotNull { activity ->
+            // ora reală de start (prima pornire a cronometrului), altfel ora planificată
+            val start = sessionDao.firstStartFor(activity.id)?.let { millis ->
+                val time = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime()
+                time.hour * 60 + time.minute
+            } ?: activity.plannedStartMinute
+
+            start?.let { SlotRecommender.Outcome(it, success = activity.state == "DONE") }
+        }
 }

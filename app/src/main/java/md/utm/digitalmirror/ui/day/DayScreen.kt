@@ -3,16 +3,19 @@ package md.utm.digitalmirror.ui.day
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.domain.DurationEstimator
+import md.utm.digitalmirror.domain.SlotRecommender
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -21,8 +24,7 @@ import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel()) {
@@ -155,6 +157,9 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
         ActivityDialog(
             initial = null,
             categories = categories,
+            date = date,
+            dayActivities = activities,
+            loadSlotHistory = { vm.slotHistory(it) },
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
             loadHistory = { vm.durationHistory(it) },
@@ -170,6 +175,9 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
         ActivityDialog(
             initial = activity,
             categories = categories,
+            date = date,
+            dayActivities = activities,
+            loadSlotHistory = { vm.slotHistory(it) },
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
             loadHistory = { vm.durationHistory(it) },
@@ -433,6 +441,9 @@ private fun FinishDialog(
 private fun ActivityDialog(
     initial: Activity?,
     categories: List<Category>,
+    date: String,
+    dayActivities: List<Activity>,
+    loadSlotHistory: suspend (Long) -> List<SlotRecommender.Outcome>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
     loadHistory: suspend (Long) -> List<DurationEstimator.Sample>,
@@ -457,6 +468,38 @@ private fun ActivityDialog(
     val typedMinutes = minutes.toIntOrNull()
     val isApplied = appliedSuggestion != null && typedMinutes == appliedSuggestion
     val suggestion = if (isApplied) null else DurationEstimator.suggest(history, typedMinutes)
+
+    // istoricul orelor de start pentru categoria aleasă
+    val slotHistory by produceState(emptyList<SlotRecommender.Outcome>(), selectedCategory?.id) {
+        value = selectedCategory?.id?.let { loadSlotHistory(it) } ?: emptyList()
+    }
+
+    // intervalul recomandat; doar când ora nu e aleasă și ziua nu e în trecut
+    val slotSuggestion = run {
+        val day = LocalDate.parse(date)
+        val today = LocalDate.now()
+        if (startMinute != null || day.isBefore(today)) return@run null
+
+        // intervalele deja ocupate de celelalte activități ale zilei
+        val busy = dayActivities
+            .filter { it.id != initial?.id && it.state != "ABANDONED" && it.state != "POSTPONED" }
+            .mapNotNull { a ->
+                a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) }
+            }
+
+        // azi nu propunem ore care au trecut deja
+        val earliest = if (day == today) {
+            val now = LocalTime.now()
+            maxOf(7 * 60, now.hour * 60 + now.minute + 10)
+        } else 7 * 60
+
+        SlotRecommender.suggest(
+            history = slotHistory,
+            durationMinutes = typedMinutes ?: suggestion?.minutes ?: 30,
+            busy = busy,
+            earliestStart = earliest
+        )
+    }
     var showTimePicker by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -552,6 +595,15 @@ private fun ActivityDialog(
                     )
                 }
 
+                // recomandarea orei de start
+                slotSuggestion?.let { slot ->
+                    SlotHint(
+                        slot = slot,
+                        categoryName = selectedCategory?.name ?: "",
+                        onUse = { startMinute = slot.startMinute }
+                    )
+                }
+
                 // ora de start (opțională)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -634,6 +686,40 @@ private fun SuggestionHint(
             if (!realistic) {
                 TextButton(onClick = onUse) { Text("Folosește") }
             }
+        }
+    }
+}
+
+// caseta cu intervalul recomandat și explicația lui
+@Composable
+private fun SlotHint(
+    slot: SlotRecommender.Suggestion,
+    categoryName: String,
+    onUse: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Interval recomandat ${formatMinute(slot.startMinute)}–${formatMinute(slot.endMinute)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    "~${slot.successPercent}% finalizate la această oră · " +
+                            "${slot.nearbyCount} din ${slot.sampleSize} activități $categoryName în jur",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+            TextButton(onClick = onUse) { Text("Folosește") }
         }
     }
 }

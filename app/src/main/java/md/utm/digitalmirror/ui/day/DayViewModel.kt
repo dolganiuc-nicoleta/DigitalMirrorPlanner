@@ -13,6 +13,7 @@ import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.domain.DurationEstimator
+import md.utm.digitalmirror.domain.SlotRecommender
 import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -135,6 +136,10 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
     // istoricul de durate pentru o categorie, folosit de recomandare
     suspend fun durationHistory(categoryId: Long): List<DurationEstimator.Sample> =
         repo.durationHistory(categoryId)
+
+    // istoricul orelor de start (și dacă activitatea a fost finalizată), folosit de recomandarea intervalului
+    suspend fun slotHistory(categoryId: Long): List<SlotRecommender.Outcome> =
+        repo.slotHistory(categoryId)
 
     fun postponeActivity(activity: Activity, newDate: String) = viewModelScope.launch {
         repo.postponeActivity(activity.id, newDate)

@@ -24,4 +24,7 @@ interface WorkSessionDao {
         WHERE activityId = :activityId AND endedAt IS NOT NULL
     """)
     suspend fun totalMillisForActivity(activityId: Long): Long
+
+    @Query("SELECT MIN(startedAt) FROM work_session WHERE activityId = :activityId")
+    suspend fun firstStartFor(activityId: Long): Long?
 }
