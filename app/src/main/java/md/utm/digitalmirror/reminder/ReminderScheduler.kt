@@ -28,10 +28,10 @@ object ReminderScheduler {
         var next = now.toLocalDate().atTime(minute / 60, minute % 60)
         if (!next.isAfter(now)) next = next.plusDays(1)
 
-        val delayMinutes = Duration.between(now, next).toMinutes()
+        val delayMillis = Duration.between(now, next).toMillis()   // la milisecundă, nu doar minute întregi
 
         val request = PeriodicWorkRequestBuilder<ReminderWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
+            .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
             .build()
 
         workManager.enqueueUniquePeriodicWork(
