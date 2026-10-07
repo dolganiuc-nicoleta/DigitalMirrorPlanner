@@ -10,10 +10,22 @@ object ReminderScheduler {
 
     private const val WORK_NAME = "evening_reminder"
 
-    // programează reminder-ul zilnic la ora dată (implicit 21:00)
-    fun schedule(context: Context, hour: Int = 21, minute: Int = 0) {
+    /**
+     * Programează reminder-ul zilnic după setările salvate.
+     * replaceExisting = false la pornirea aplicației (păstrează programarea existentă),
+     * true când utilizatorul schimbă ora din Setări.
+     */
+    fun schedule(context: Context, replaceExisting: Boolean = false) {
+        val workManager = WorkManager.getInstance(context)
+
+        if (!ReminderPrefs.isEnabled(context)) {
+            workManager.cancelUniqueWork(WORK_NAME)
+            return
+        }
+
+        val minute = ReminderPrefs.minuteOfDay(context)
         val now = LocalDateTime.now()
-        var next = now.toLocalDate().atTime(hour, minute)
+        var next = now.toLocalDate().atTime(minute / 60, minute % 60)
         if (!next.isAfter(now)) next = next.plusDays(1)
 
         val delayMinutes = Duration.between(now, next).toMinutes()
@@ -22,9 +34,10 @@ object ReminderScheduler {
             .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
             .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        workManager.enqueueUniquePeriodicWork(
             WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,   // nu reprogramează la fiecare pornire
+            if (replaceExisting) ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+            else ExistingPeriodicWorkPolicy.KEEP,
             request
         )
     }

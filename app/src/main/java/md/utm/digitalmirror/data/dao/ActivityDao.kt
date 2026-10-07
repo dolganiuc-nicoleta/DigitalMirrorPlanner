@@ -72,4 +72,7 @@ interface ActivityDao {
     LIMIT :limit
 """)
     suspend fun getClosedByCategory(categoryId: Long, limit: Int): List<Activity>
+
+    @Query("UPDATE activity SET categoryId = NULL WHERE categoryId = :categoryId")
+    suspend fun clearCategory(categoryId: Long)
 }

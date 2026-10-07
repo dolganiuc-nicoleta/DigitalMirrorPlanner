@@ -121,4 +121,11 @@ class PlannerRepository(
 
             start?.let { SlotRecommender.Outcome(it, success = activity.state == "DONE") }
         }
+    suspend fun renameCategory(category: Category, newName: String) =
+        categoryDao.update(category.copy(name = newName))
+
+    suspend fun deleteCategory(category: Category) {
+        activityDao.clearCategory(category.id)   // întâi scoatem categoria de pe activități
+        categoryDao.delete(category)
+    }
 }
