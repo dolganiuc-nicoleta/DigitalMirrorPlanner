@@ -4,6 +4,9 @@ import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 import md.utm.digitalmirror.data.entity.Activity
 
+
+data class DateMinutes(val date: String, val minutes: Int)
+
 @Dao
 interface ActivityDao {
 
@@ -84,7 +87,15 @@ interface ActivityDao {
     LIMIT :limit
 """)
     suspend fun getEstimatorHistory(limit: Int): List<Activity>
-
+    // minutele lucrate efectiv în fiecare zi dinaintea datei date
+    @Query("""
+    SELECT date, SUM(actualMinutes) AS minutes FROM activity
+    WHERE state IN ('DONE', 'PARTIAL') AND actualMinutes > 0 AND date < :before
+    GROUP BY date
+    ORDER BY date DESC
+    LIMIT :limit
+""")
+    suspend fun dailyTotals(before: String, limit: Int): List<DateMinutes>
 
 
 }

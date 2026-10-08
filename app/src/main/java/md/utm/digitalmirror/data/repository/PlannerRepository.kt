@@ -1,5 +1,5 @@
 package md.utm.digitalmirror.data.repository
-
+import md.utm.digitalmirror.domain.DayLoad
 import kotlinx.coroutines.flow.Flow
 import md.utm.digitalmirror.data.dao.ActivityDao
 import md.utm.digitalmirror.data.dao.CategoryDao
@@ -155,4 +155,9 @@ class PlannerRepository(
             )
         }
     }
+
+    suspend fun dailyTotals(before: String): List<DayLoad.DayTotal> =
+        activityDao.dailyTotals(before, 90).map {
+            DayLoad.DayTotal(LocalDate.parse(it.date), it.minutes)
+        }
 }

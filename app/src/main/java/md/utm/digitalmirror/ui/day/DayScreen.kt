@@ -17,6 +17,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DailyActivity
+import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
@@ -43,6 +44,7 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
     val runningOffset by vm.runningOffset.collectAsState()
     val reflection by vm.reflection.collectAsState()
     val health by vm.health.collectAsState()
+    val dayLoad by vm.dayLoad.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
@@ -119,6 +121,11 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             ) {
                 // somnul și pașii zilei
                 health?.let { item { HealthSummary(it) } }
+
+                // încărcarea zilei, doar pentru azi și zilele viitoare
+                dayLoad?.takeIf { date >= LocalDate.now().toString() && it.plannedMinutes > 0 }?.let { load ->
+                    item { DayLoadCard(load) }
+                }
 
                 // sortate după ora de start, cele fără oră la final
                 items(
@@ -384,6 +391,57 @@ private fun HealthSummary(data: DailyActivity) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+}
+
+// cât e planificat azi față de cât reușește utilizatorul de obicei
+@Composable
+private fun DayLoadCard(load: DayLoad.Result) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Încărcarea zilei", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(
+                    load.typicalMinutes?.let { "${formatDuration(load.plannedMinutes)} / ${formatDuration(it)} obișnuit" }
+                        ?: "${formatDuration(load.plannedMinutes)} planificat",
+                    style = MaterialTheme.typography.titleSmall
+                )
+            }
+
+            load.typicalMinutes?.let { typical ->
+                LinearProgressIndicator(
+                    progress = { (load.plannedMinutes.toFloat() / typical).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                    color = if (load.status == DayLoad.Status.OVERLOADED) MaterialTheme.colorScheme.tertiaryContainer
+                    else MaterialTheme.colorScheme.onPrimary,
+                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f)
+                )
+            }
+
+            Text(
+                when (load.status) {
+                    DayLoad.Status.NO_HISTORY ->
+                        "Încă învăț cât reușești de obicei într-o zi (${load.daysUsed} din ${DayLoad.MIN_DAYS} zile)."
+                    DayLoad.Status.OVERLOADED ->
+                        "De obicei reușești ~${formatDuration(load.typicalMinutes!!)} într-o zi ca asta. " +
+                                "Ziua e supraîncărcată cu ${formatDuration(load.difference)}."
+                    DayLoad.Status.LIGHT ->
+                        "Ai planificat mai puțin decât reușești de obicei. Mai ai loc pentru ceva."
+                    DayLoad.Status.OK ->
+                        "Pare o zi realistă pentru tine."
+                },
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
 }
 
 // cardul afișat după ce reflecția zilei a fost salvată

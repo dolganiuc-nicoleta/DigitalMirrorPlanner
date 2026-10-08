@@ -13,6 +13,7 @@ import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
 import java.time.LocalDate
@@ -56,6 +57,18 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // somnul și pașii zilei afișate (din Health Connect)
+    // încărcarea zilei: cât e planificat vs. cât reușește utilizatorul de obicei
+    val dayLoad: StateFlow<DayLoad.Result?> =
+        _date.flatMapLatest { date ->
+            val history = flow { emit(repo.dailyTotals(date)) }
+            combine(repo.observeActivitiesForDate(date), history) { list, totals ->
+                val planned = list
+                    .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+                    .sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
+                DayLoad.compute(planned, totals, LocalDate.parse(date))
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val health: StateFlow<DailyActivity?> =
         _date.flatMapLatest { dailyActivityDao.observeByDate(it) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
