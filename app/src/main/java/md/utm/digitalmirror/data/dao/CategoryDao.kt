@@ -21,4 +21,7 @@ interface CategoryDao {
 
     @Query("SELECT * FROM category WHERE id = :id")
     suspend fun getById(id: Long): Category?
+
+    @Query("SELECT * FROM category WHERE LOWER(TRIM(name)) = LOWER(TRIM(:name)) LIMIT 1")
+    suspend fun findByName(name: String): Category?
 }

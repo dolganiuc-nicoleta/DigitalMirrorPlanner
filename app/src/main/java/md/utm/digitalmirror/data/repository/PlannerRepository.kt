@@ -23,8 +23,9 @@ class PlannerRepository(
     fun observeActivitiesForDate(date: String): Flow<List<Activity>> =
         activityDao.observeByDate(date)
 
+    // dacă există deja o categorie cu același nume, o refolosim în loc să creăm un duplicat
     suspend fun addCategory(name: String): Long =
-        categoryDao.insert(Category(name = name))
+        categoryDao.findByName(name)?.id ?: categoryDao.insert(Category(name = name))
 
     suspend fun addActivity(activity: Activity): Long =
         activityDao.insert(activity.copy(titleKey = TitleKey.of(activity.title)))
