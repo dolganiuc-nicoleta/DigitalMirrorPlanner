@@ -165,4 +165,15 @@ class PlannerRepository(
 
     suspend fun upcomingPlanned(fromDate: String): List<Activity> =
         activityDao.getUpcomingPlanned(fromDate)
+
+    suspend fun closeActivity(activityId: Long, actualMinutes: Int?, state: String, source: String?) {
+        sessionDao.getRunning()
+            ?.takeIf { it.activityId == activityId }
+            ?.let { sessionDao.update(it.copy(endedAt = System.currentTimeMillis())) }
+
+        activityDao.getById(activityId)?.let {
+            activityDao.update(it.copy(actualMinutes = actualMinutes, state = state, actualSource = source))
+        }
+    }
+
 }

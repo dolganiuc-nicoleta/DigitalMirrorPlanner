@@ -36,11 +36,10 @@ fun ClosingScreen(
     LaunchedEffect(date) { vm.load(date) }
 
     val activities by vm.activities.collectAsState()
-    val tracked by vm.tracked.collectAsState()
+    val drafts by vm.drafts.collectAsState()
     val reflection by vm.reflection.collectAsState()
     val daily by vm.daily.collectAsState()
 
-    val open = activities.filter { it.state !in CLOSED_STATES }
     val closed = activities.filter { it.state in CLOSED_STATES }
 
     // câmpurile reflecției, precompletate dacă reflecția există deja
@@ -71,19 +70,35 @@ fun ClosingScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
-            // 1. activități de confirmat
-            item { SectionTitle("De confirmat (${open.size})") }
+            // 1. activități de confirmat, precompletate
+            item { SectionTitle("De confirmat (${drafts.size})") }
 
-            if (open.isEmpty()) {
+            if (drafts.isEmpty()) {
                 item { Hint("Toate activitățile zilei au o stare.") }
+            } else {
+                item { Hint("Am completat ce știu din cronometru și din plan. Corectează doar ce nu e bine.") }
             }
 
-            items(open, key = { it.id }) { activity ->
-                ResolveCard(
-                    activity = activity,
-                    initialMinutes = tracked[activity.id] ?: activity.actualMinutes ?: 0,
-                    onSave = { minutes, state -> vm.resolveActivity(activity, minutes, state) }
+            items(drafts, key = { it.activity.id }) { draft ->
+                DraftCard(
+                    draft = draft,
+                    onState = { vm.changeState(draft, it) },
+                    onMinutes = { vm.changeMinutes(draft, it) }
                 )
+            }
+
+            if (drafts.isNotEmpty()) {
+                item {
+                    // toate activitățile finalizate sau parțiale trebuie să aibă o durată
+                    val ready = drafts.all { it.state !in setOf("DONE", "PARTIAL") || it.minutes != null }
+                    Button(
+                        onClick = { vm.confirmAll() },
+                        enabled = ready,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (drafts.size == 1) "Totul corect · confirmă" else "Totul corect · confirmă ${drafts.size}")
+                    }
+                }
             }
 
             // 2. rezumatul activităților închise
@@ -263,43 +278,68 @@ private fun SleepTimeDialog(
     )
 }
 
+// o activitate de confirmat: starea și durata propuse, cu posibilitatea de a le corecta
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ResolveCard(
-    activity: Activity,
-    initialMinutes: Int,
-    onSave: (Int, String) -> Unit
+private fun DraftCard(
+    draft: ClosingViewModel.Draft,
+    onState: (String) -> Unit,
+    onMinutes: (Int?) -> Unit
 ) {
-    var minutes by remember(activity.id, initialMinutes) { mutableStateOf<Int?>(initialMinutes) }
-    var state by remember(activity.id) { mutableStateOf("DONE") }
+    var editing by remember(draft.activity.id) { mutableStateOf(false) }
+    val needsDuration = draft.state == "DONE" || draft.state == "PARTIAL"
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(activity.title, fontWeight = FontWeight.Medium)
-            activity.userEstimatedMinutes?.let { Hint("planificat ${formatDuration(it)}") }
+            Text(draft.activity.title, fontWeight = FontWeight.Medium)
+
+            val planned = draft.activity.userEstimatedMinutes ?: draft.activity.estimatedMinutes
+            Hint(
+                buildList {
+                    planned?.let { add("planificat ${formatDuration(it)}") }
+                    add(
+                        if (draft.trackedMinutes > 0) "cronometrat ${formatDuration(draft.trackedMinutes)}"
+                        else "fără cronometru"
+                    )
+                }.joinToString(" · ")
+            )
 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 STATE_OPTIONS.forEach { (value, label) ->
                     FilterChip(
-                        selected = state == value,
-                        onClick = { state = value },
+                        selected = draft.state == value,
+                        onClick = { onState(value) },
                         label = { Text(label) }
                     )
                 }
             }
 
-            DurationField(
-                label = "Durata reală",
-                minutes = minutes,
-                onChange = { minutes = it },
-                showQuickValues = false
-            )
-
-            Button(onClick = { onSave(minutes ?: 0, state) }, enabled = minutes != null) {
-                Text("Confirmă")
+            if (needsDuration) {
+                if (editing || draft.minutes == null) {
+                    DurationField(
+                        label = "Durata reală",
+                        minutes = draft.minutes,
+                        onChange = onMinutes,
+                        showQuickValues = false
+                    )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Durata reală: ${formatDuration(draft.minutes)}")
+                            when (draft.source) {
+                                "AS_PLANNED" -> Hint("copiată din plan · corectează dacă a durat altfel")
+                                "TIMER" -> Hint("din cronometru")
+                                "MANUAL" -> Hint("corectată de tine")
+                            }
+                        }
+                        TextButton(onClick = { editing = true }) { Text("Modifică") }
+                    }
+                }
+            } else if (draft.state == "POSTPONED") {
+                Hint("se mută pe mâine")
             }
         }
     }

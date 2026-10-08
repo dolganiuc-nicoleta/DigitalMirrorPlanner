@@ -12,6 +12,9 @@ import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.reminder.ActivityReminders
+import java.time.LocalDate
+
+private val CLOSED_STATES = setOf("DONE", "PARTIAL", "POSTPONED", "ABANDONED")
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
@@ -49,11 +52,66 @@ class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun resolveActivity(activity: Activity, minutes: Int, state: String) =
-        viewModelScope.launch {
-            planner.finishActivity(activity.id, minutes, state)
-            ActivityReminders.onActivityClosed(app, activity.id)
+    // ---------- confirmarea activităților, precompletată ----------
+
+    /**
+     * Propunerea pentru o activitate încă deschisă.
+     * source spune de unde vine durata: TIMER (cronometru), AS_PLANNED (copiată din plan), MANUAL (corectată de om).
+     */
+    data class Draft(
+        val activity: Activity,
+        val state: String,
+        val minutes: Int?,
+        val source: String?,
+        val trackedMinutes: Int
+    )
+
+    // ce a modificat utilizatorul; restul activităților păstrează propunerea implicită
+    private val _edits = MutableStateFlow<Map<Long, Draft>>(emptyMap())
+
+    val drafts: StateFlow<List<Draft>> =
+        combine(activities, _tracked, _edits) { list, tracked, edits ->
+            list.filter { it.state !in CLOSED_STATES }
+                .map { a -> edits[a.id] ?: defaultDraft(a, tracked[a.id] ?: 0) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private fun defaultDraft(a: Activity, tracked: Int): Draft {
+        val planned = a.userEstimatedMinutes ?: a.estimatedMinutes
+        return when {
+            tracked > 0 -> Draft(a, "DONE", tracked, Activity.SOURCE_TIMER, tracked)
+            planned != null -> Draft(a, "DONE", planned, Activity.SOURCE_AS_PLANNED, 0)
+            else -> Draft(a, "DONE", null, null, 0)
         }
+    }
+
+    fun changeState(draft: Draft, state: String) {
+        _edits.value = _edits.value + (draft.activity.id to draft.copy(state = state))
+    }
+
+    // dacă utilizatorul corectează durata, ea devine introdusă manual
+    fun changeMinutes(draft: Draft, minutes: Int?) {
+        _edits.value = _edits.value + (draft.activity.id to draft.copy(minutes = minutes, source = Activity.SOURCE_MANUAL))
+    }
+
+    /** „Totul corect”: confirmă toate activitățile deschise, cu propunerile (eventual corectate). */
+    fun confirmAll() = viewModelScope.launch {
+        val date = _date.value ?: return@launch
+        drafts.value.forEach { d ->
+            val id = d.activity.id
+            ActivityReminders.onActivityClosed(app, id)
+            when (d.state) {
+                // amânată → se mută pe ziua următoare, ca în meniul ⋮
+                "POSTPONED" -> {
+                    planner.postponeActivity(id, LocalDate.parse(date).plusDays(1).toString())
+                    planner.getActivity(id)?.let { ActivityReminders.onActivityPlanned(app, it) }
+                }
+                "ABANDONED" -> planner.closeActivity(id, d.trackedMinutes.takeIf { it > 0 }, "ABANDONED",
+                    if (d.trackedMinutes > 0) Activity.SOURCE_TIMER else null)
+                else -> planner.closeActivity(id, d.minutes ?: 0, d.state, d.source)
+            }
+        }
+        _edits.value = emptyMap()
+    }
 
     /**
      * Salvează reflecția și, dacă utilizatorul a completat sau a modificat somnul, și somnul.
