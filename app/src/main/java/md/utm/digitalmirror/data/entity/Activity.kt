@@ -1,10 +1,11 @@
 package md.utm.digitalmirror.data.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import androidx.room.ColumnInfo
+
 @Entity(
     tableName = "activity",
     foreignKeys = [ForeignKey(
@@ -13,7 +14,7 @@ import androidx.room.ColumnInfo
         childColumns = ["categoryId"],
         onDelete = ForeignKey.SET_NULL
     )],
-    indices = [Index("categoryId"), Index("date")]
+    indices = [Index("categoryId"), Index("date"), Index("titleKey")]
 )
 data class Activity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -21,12 +22,29 @@ data class Activity(
     val categoryId: Long?,
     val date: String,                    // "2026-10-01"
     val plannedStartMinute: Int?,        // minute de la miezul nopții, null = nefixat
-    val estimatedMinutes: Int?,          // ce a propus sistemul
-    val userEstimatedMinutes: Int?,      // ce a pus utilizatorul, dacă a modificat
-    val actualMinutes: Int?,             // completat la închiderea zilei
+
+    // --- durate ---
+    val userGuessMinutes: Int? = null,   // v4 · cât a crezut utilizatorul ÎNAINTE să vadă propunerea (M0)
+    val estimatedMinutes: Int?,          // ce a propus sistemul (estimarea centrală)
+    val estimatedLowMinutes: Int? = null,   // v4 · limita de jos a intervalului de 80%
+    val estimatedHighMinutes: Int? = null,  // v4 · limita de sus a intervalului de 80%
+    val userEstimatedMinutes: Int?,      // durata planificată finală (ce a rămas în formular)
+    val actualMinutes: Int?,             // durata reală
+    val actualSource: String? = null,    // v4 · de unde vine durata reală: TIMER, MANUAL, AS_PLANNED, CALENDAR, HEALTH
+
     val state: String = "PLANNED",       // PLANNED, IN_PROGRESS, DONE, PARTIAL, POSTPONED, ABANDONED
     val note: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0")
-val postponedCount: Int = 0
-)
+    val postponedCount: Int = 0,
+    val titleKey: String? = null         // v4 · titlul normalizat, pentru a găsi activitățile „la fel”
+) {
+    companion object {
+        // sursele durate reale; estimatorul învață doar din cele sigure
+        const val SOURCE_TIMER = "TIMER"
+        const val SOURCE_MANUAL = "MANUAL"
+        const val SOURCE_AS_PLANNED = "AS_PLANNED"
+        const val SOURCE_CALENDAR = "CALENDAR"
+        const val SOURCE_HEALTH = "HEALTH"
+    }
+}

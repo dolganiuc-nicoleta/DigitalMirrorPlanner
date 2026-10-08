@@ -9,8 +9,10 @@ data class DailyActivity(
     val steps: Int?,
     val activeMinutes: Int?,
     val collectedAt: Long = System.currentTimeMillis(),
-    // adăugate în versiunea 3 a bazei de date (Health Connect)
-    val sleepMinutes: Int? = null,      // cât a dormit în noaptea dinaintea acestei zile
+    // v3 · somnul din noaptea dinaintea acestei zile
+    val sleepMinutes: Int? = null,
     val bedtimeMinute: Int? = null,     // ora de culcare, în minute de la miezul nopții
-    val wakeMinute: Int? = null         // ora de trezire
+    val wakeMinute: Int? = null,        // ora de trezire
+    // v4 · de unde vine somnul: HEALTH (Health Connect) sau MANUAL (introdus de utilizator)
+    val sleepSource: String? = null
 )

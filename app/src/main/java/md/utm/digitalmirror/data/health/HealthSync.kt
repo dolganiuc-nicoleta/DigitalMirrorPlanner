@@ -70,7 +70,8 @@ class HealthSync(private val context: Context) {
 
         return try {
             val days = sync(if (initialDone) REGULAR_DAYS else INITIAL_DAYS)
-            prefs.edit().putBoolean(KEY_INITIAL_DONE, true).apply()
+            // marcăm sincronizarea inițială ca făcută doar dacă a găsit date
+            if (days > 0) prefs.edit().putBoolean(KEY_INITIAL_DONE, true).apply()
             days
         } catch (e: Exception) {
             // de ex. permisiune retrasă între timp sau Health Connect indisponibil
@@ -95,11 +96,14 @@ class HealthSync(private val context: Context) {
 
             if (daySteps != null || daySleep != null) {
                 val existing = dao.getByDate(key)
+                // somnul introdus manual de utilizator are prioritate față de cel din Health Connect
+                val useHealthSleep = daySleep != null && existing?.sleepSource != "MANUAL"
                 val row = (existing ?: DailyActivity(date = key, steps = null, activeMinutes = null)).copy(
                     steps = daySteps ?: existing?.steps,
-                    sleepMinutes = daySleep?.minutes ?: existing?.sleepMinutes,
-                    bedtimeMinute = daySleep?.bedtimeMinute ?: existing?.bedtimeMinute,
-                    wakeMinute = daySleep?.wakeMinute ?: existing?.wakeMinute,
+                    sleepMinutes = if (useHealthSleep) daySleep!!.minutes else existing?.sleepMinutes,
+                    bedtimeMinute = if (useHealthSleep) daySleep!!.bedtimeMinute else existing?.bedtimeMinute,
+                    wakeMinute = if (useHealthSleep) daySleep!!.wakeMinute else existing?.wakeMinute,
+                    sleepSource = if (useHealthSleep) "HEALTH" else existing?.sleepSource,
                     collectedAt = System.currentTimeMillis()
                 )
                 dao.upsert(row)

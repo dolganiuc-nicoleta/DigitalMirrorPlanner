@@ -9,6 +9,7 @@ import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.domain.DurationEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
+import md.utm.digitalmirror.domain.TitleKey
 import java.time.Instant
 import java.time.ZoneId
 class PlannerRepository(
@@ -26,10 +27,10 @@ class PlannerRepository(
         categoryDao.insert(Category(name = name))
 
     suspend fun addActivity(activity: Activity): Long =
-        activityDao.insert(activity)
+        activityDao.insert(activity.copy(titleKey = TitleKey.of(activity.title)))
 
     suspend fun updateActivity(activity: Activity) =
-        activityDao.update(activity)
+        activityDao.update(activity.copy(titleKey = TitleKey.of(activity.title)))
 
     suspend fun deleteActivity(activity: Activity) =
         activityDao.delete(activity)
@@ -70,15 +71,23 @@ class PlannerRepository(
             ?.takeIf { it.activityId == activityId }
             ?.let { sessionDao.update(it.copy(endedAt = System.currentTimeMillis())) }
 
+        // dacă există sesiuni de cronometru, durata vine din cronometru; altfel a fost introdusă manual
+        val timed = sessionDao.totalMillisForActivity(activityId) > 0
         activityDao.getById(activityId)?.let {
-            activityDao.update(it.copy(actualMinutes = actualMinutes, state = state))
+            activityDao.update(
+                it.copy(
+                    actualMinutes = actualMinutes,
+                    state = state,
+                    actualSource = if (timed) Activity.SOURCE_TIMER else Activity.SOURCE_MANUAL
+                )
+            )
         }
     }
 
     private suspend fun recomputeActualMinutes(activityId: Long) {
         val minutes = trackedMinutes(activityId)
         activityDao.getById(activityId)?.let {
-            activityDao.update(it.copy(actualMinutes = minutes))
+            activityDao.update(it.copy(actualMinutes = minutes, actualSource = Activity.SOURCE_TIMER))
         }
     }
 
