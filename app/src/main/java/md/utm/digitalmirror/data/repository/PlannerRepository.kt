@@ -160,4 +160,9 @@ class PlannerRepository(
         activityDao.dailyTotals(before, 90).map {
             DayLoad.DayTotal(LocalDate.parse(it.date), it.minutes)
         }
+
+    fun observeRunningSession(): Flow<WorkSession?> = sessionDao.observeRunning()
+
+    suspend fun upcomingPlanned(fromDate: String): List<Activity> =
+        activityDao.getUpcomingPlanned(fromDate)
 }

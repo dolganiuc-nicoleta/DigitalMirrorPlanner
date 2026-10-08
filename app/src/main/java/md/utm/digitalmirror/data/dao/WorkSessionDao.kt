@@ -2,7 +2,7 @@ package md.utm.digitalmirror.data.dao
 
 import androidx.room.*
 import md.utm.digitalmirror.data.entity.WorkSession
-
+import kotlinx.coroutines.flow.Flow
 @Dao
 interface WorkSessionDao {
 
@@ -27,4 +27,7 @@ interface WorkSessionDao {
 
     @Query("SELECT MIN(startedAt) FROM work_session WHERE activityId = :activityId")
     suspend fun firstStartFor(activityId: Long): Long?
+
+    @Query("SELECT * FROM work_session WHERE endedAt IS NULL LIMIT 1")
+    fun observeRunning(): Flow<WorkSession?>
 }

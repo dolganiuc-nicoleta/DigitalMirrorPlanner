@@ -96,6 +96,7 @@ interface ActivityDao {
     LIMIT :limit
 """)
     suspend fun dailyTotals(before: String, limit: Int): List<DateMinutes>
-
+    @Query("SELECT * FROM activity WHERE date >= :fromDate AND state = 'PLANNED' AND plannedStartMinute IS NOT NULL")
+    suspend fun getUpcomingPlanned(fromDate: String): List<Activity>
 
 }

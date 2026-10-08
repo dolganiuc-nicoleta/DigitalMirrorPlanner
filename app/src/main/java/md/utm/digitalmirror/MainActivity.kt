@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.health.HealthSync
+import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.reminder.ReminderNotifications
 import md.utm.digitalmirror.reminder.ReminderScheduler
 import md.utm.digitalmirror.ui.navigation.AppNavigation
@@ -25,6 +26,10 @@ class MainActivity : ComponentActivity() {
 
         ReminderNotifications.createChannel(this)
         ReminderScheduler.schedule(this)
+        ActivityReminders.createChannels(this)
+
+        // alarmele activităților se pierd la repornirea telefonului, așa că le refacem la fiecare pornire
+        lifecycleScope.launch { ActivityReminders.rescheduleAll(applicationContext) }
 
         // true dacă aplicația a fost deschisă din notificare
         val openClosing = intent.getBooleanExtra(ReminderNotifications.EXTRA_OPEN_CLOSING, false)

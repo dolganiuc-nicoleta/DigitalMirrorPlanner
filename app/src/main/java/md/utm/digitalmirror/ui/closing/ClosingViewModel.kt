@@ -11,9 +11,10 @@ import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.reminder.ActivityReminders
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class ClosingViewModel(app: Application) : AndroidViewModel(app) {
+class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val db = AppDatabase.get(app)
     private val planner = PlannerRepository(db.activityDao(), db.categoryDao(), db.workSessionDao())
@@ -51,6 +52,7 @@ class ClosingViewModel(app: Application) : AndroidViewModel(app) {
     fun resolveActivity(activity: Activity, minutes: Int, state: String) =
         viewModelScope.launch {
             planner.finishActivity(activity.id, minutes, state)
+            ActivityReminders.onActivityClosed(app, activity.id)
         }
 
     /**

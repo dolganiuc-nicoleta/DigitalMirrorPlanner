@@ -16,10 +16,11 @@ import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
+import md.utm.digitalmirror.reminder.ActivityReminders
 import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class DayViewModel(app: Application) : AndroidViewModel(app) {
+class DayViewModel(private val app: Application) : AndroidViewModel(app) {
 
     data class FinishDraft(val activity: Activity, val trackedMinutes: Int)
 
@@ -34,11 +35,17 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
     private val _date = MutableStateFlow(LocalDate.now().toString())
     val date: StateFlow<String> = _date
 
-    private val _runningSession = MutableStateFlow<WorkSession?>(null)
-    val runningSession: StateFlow<WorkSession?> = _runningSession
+    // cronometrul pornit, urmărit direct din baza de date:
+    // așa ecranul se actualizează și când utilizatorul apasă Start/Pauză/Gata dintr-o notificare
+    val runningSession: StateFlow<WorkSession?> =
+        repo.observeRunningSession()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    private val _runningOffset = MutableStateFlow(0L)
-    val runningOffset: StateFlow<Long> = _runningOffset
+    // timpul din sesiunile anterioare ale activității care rulează
+    val runningOffset: StateFlow<Long> =
+        repo.observeRunningSession()
+            .mapLatest { session -> session?.let { repo.closedMillis(it.activityId) } ?: 0L }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     private val _finishDraft = MutableStateFlow<FinishDraft?>(null)
     val finishDraft: StateFlow<FinishDraft?> = _finishDraft
@@ -73,18 +80,8 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         _date.flatMapLatest { dailyActivityDao.observeByDate(it) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // 3. restaurează cronometrul dacă aplicația a fost închisă cu el pornit
-    init {
-        refreshRunning()
-    }
-
-    fun refreshRunning() = viewModelScope.launch { syncRunning() }
-
-    private suspend fun syncRunning() {
-        val session = repo.runningSession()
-        session?.let { _runningOffset.value = repo.closedMillis(it.activityId) }
-        _runningSession.value = session
-    }
+    // 3. păstrat pentru compatibilitate cu DayScreen; starea cronometrului vine acum direct din baza de date
+    fun refreshRunning() = Unit
 
     // 4. navigare între zile
     fun changeDate(newDate: String) {
@@ -123,20 +120,20 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         estimate: HistoryEstimator.Estimate?
     ) = viewModelScope.launch {
         if (title.isBlank()) return@launch
-        repo.addActivity(
-            Activity(
-                title = title.trim(),
-                categoryId = categoryId,
-                date = _date.value,
-                plannedStartMinute = startMinute,
-                userGuessMinutes = guessMinutes,
-                estimatedMinutes = estimate?.minutes,
-                estimatedLowMinutes = estimate?.lowMinutes,
-                estimatedHighMinutes = estimate?.highMinutes,
-                userEstimatedMinutes = plannedMinutes,
-                actualMinutes = null
-            )
+        val activity = Activity(
+            title = title.trim(),
+            categoryId = categoryId,
+            date = _date.value,
+            plannedStartMinute = startMinute,
+            userGuessMinutes = guessMinutes,
+            estimatedMinutes = estimate?.minutes,
+            estimatedLowMinutes = estimate?.lowMinutes,
+            estimatedHighMinutes = estimate?.highMinutes,
+            userEstimatedMinutes = plannedMinutes,
+            actualMinutes = null
         )
+        val id = repo.addActivity(activity)
+        ActivityReminders.onActivityPlanned(app, activity.copy(id = id))
     }
 
     // la editare păstrăm ghicitul și propunerea inițiale; se schimbă doar ce a modificat utilizatorul
@@ -150,14 +147,14 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         if (title.isBlank()) return@launch
         // citim varianta proaspătă din baza de date, ca să nu pierdem timpul cronometrat între timp
         val fresh = repo.getActivity(activityId) ?: return@launch
-        repo.updateActivity(
-            fresh.copy(
-                title = title.trim(),
-                categoryId = categoryId,
-                userEstimatedMinutes = plannedMinutes,
-                plannedStartMinute = startMinute
-            )
+        val updated = fresh.copy(
+            title = title.trim(),
+            categoryId = categoryId,
+            userEstimatedMinutes = plannedMinutes,
+            plannedStartMinute = startMinute
         )
+        repo.updateActivity(updated)
+        ActivityReminders.onActivityPlanned(app, updated)
     }
 
     // istoricul pentru estimatorul pe niveluri (doar activități finalizate, din surse sigure)
@@ -168,8 +165,9 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         repo.slotHistory(categoryId)
 
     fun postponeActivity(activity: Activity, newDate: String) = viewModelScope.launch {
+        ActivityReminders.onActivityClosed(app, activity.id)
         repo.postponeActivity(activity.id, newDate)
-        syncRunning()
+        repo.getActivity(activity.id)?.let { ActivityReminders.onActivityPlanned(app, it) }
     }
 
     fun setState(activity: Activity, state: String) = viewModelScope.launch {
@@ -181,7 +179,7 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
             ?.takeIf { it.activityId == activity.id }
             ?.let { repo.stopTimer(it) }
         repo.deleteActivity(activity)
-        syncRunning()
+        ActivityReminders.onActivityClosed(app, activity.id)
     }
 
     // 6. cronometru și finalizare
@@ -189,11 +187,17 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         val running = repo.runningSession()
         if (running != null && running.activityId == activity.id) {
             repo.stopTimer(running)
-            _runningSession.value = null
+            ActivityReminders.onTimerStopped(app, activity.id)
         } else {
-            _runningOffset.value = repo.closedMillis(activity.id)
+            // dacă rula altă activitate, startTimer o oprește; scoatem și notificarea ei
+            running?.let { ActivityReminders.onTimerStopped(app, it.activityId) }
             repo.startTimer(activity.id)
-            _runningSession.value = repo.runningSession()
+            repo.runningSession()?.let { session ->
+                ActivityReminders.onTimerStarted(
+                    app, repo.getActivity(activity.id) ?: activity,
+                    session.startedAt, repo.closedMillis(activity.id)
+                )
+            }
         }
     }
 
@@ -204,7 +208,7 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
     fun confirmFinish(minutes: Int, state: String) = viewModelScope.launch {
         val draft = _finishDraft.value ?: return@launch
         repo.finishActivity(draft.activity.id, minutes, state)
-        syncRunning()
+        ActivityReminders.onActivityClosed(app, draft.activity.id)
         _finishDraft.value = null
     }
 
