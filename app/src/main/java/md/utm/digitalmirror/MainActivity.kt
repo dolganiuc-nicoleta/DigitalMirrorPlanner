@@ -10,6 +10,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import md.utm.digitalmirror.data.health.HealthSync
 import md.utm.digitalmirror.reminder.ReminderNotifications
 import md.utm.digitalmirror.reminder.ReminderScheduler
 import md.utm.digitalmirror.ui.navigation.AppNavigation
@@ -33,6 +36,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    // Health Connect permite citirea datelor doar cât aplicația e deschisă,
+    // așa că sincronizăm de fiecare dată când utilizatorul revine în aplicație
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { HealthSync(applicationContext).syncIfPermitted() }
+    }
 }
 
 @Composable
@@ -43,4 +53,3 @@ private fun RequestNotificationPermission() {
     ) { /* rezultatul nu ne trebuie acum */ }
     LaunchedEffect(Unit) { launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
 }
-

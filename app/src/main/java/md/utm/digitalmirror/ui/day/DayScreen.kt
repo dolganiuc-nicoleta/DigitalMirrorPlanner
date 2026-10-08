@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.domain.DurationEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
 import kotlin.math.abs
@@ -35,6 +36,7 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
     val finishDraft by vm.finishDraft.collectAsState()
     val runningOffset by vm.runningOffset.collectAsState()
     val reflection by vm.reflection.collectAsState()
+    val health by vm.health.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
@@ -82,6 +84,10 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    health?.let {
+                        HealthSummary(it)
+                        Spacer(Modifier.height(16.dp))
+                    }
                     Text(
                         if (isToday) "Nicio activitate pentru astăzi"
                         else "Nicio activitate în această zi"
@@ -105,6 +111,9 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                 contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // somnul și pașii zilei
+                health?.let { item { HealthSummary(it) } }
+
                 // sortate după ora de start, cele fără oră la final
                 items(
                     activities.sortedWith(compareBy(nullsLast()) { it.plannedStartMinute }),
@@ -349,6 +358,26 @@ private fun ActivityMenu(
             )
         }
     }
+}
+
+// rândul cu somnul din noaptea dinainte și pașii zilei
+@Composable
+private fun HealthSummary(data: DailyActivity) {
+    val parts = buildList {
+        data.sleepMinutes?.let { minutes ->
+            val range = if (data.bedtimeMinute != null && data.wakeMinute != null)
+                " (${formatMinute(data.bedtimeMinute)}–${formatMinute(data.wakeMinute)})" else ""
+            add("😴 ${minutes / 60}h ${minutes % 60}m$range")
+        }
+        data.steps?.let { add("👣 ${"%,d".format(it).replace(',', '.')} pași") }
+    }
+    if (parts.isEmpty()) return
+
+    Text(
+        parts.joinToString("   "),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 // cardul afișat după ce reflecția zilei a fost salvată

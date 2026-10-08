@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.data.repository.PlannerRepository
@@ -26,6 +27,7 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
         PlannerRepository(db.activityDao(), db.categoryDao(), db.workSessionDao())
     }
     private val reflectionDao = AppDatabase.get(app).reflectionDao()
+    private val dailyActivityDao = AppDatabase.get(app).dailyActivityDao()
 
     // 2. starea
     private val _date = MutableStateFlow(LocalDate.now().toString())
@@ -51,6 +53,11 @@ class DayViewModel(app: Application) : AndroidViewModel(app) {
     // reflecția zilei afișate; null = ziua nu a fost încă închisă
     val reflection: StateFlow<Reflection?> =
         _date.flatMapLatest { reflectionDao.observeByDate(it) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // somnul și pașii zilei afișate (din Health Connect)
+    val health: StateFlow<DailyActivity?> =
+        _date.flatMapLatest { dailyActivityDao.observeByDate(it) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // 3. restaurează cronometrul dacă aplicația a fost închisă cu el pornit

@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.health.HealthSync
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.reminder.ReminderPrefs
 import md.utm.digitalmirror.reminder.ReminderScheduler
@@ -57,7 +58,42 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
         repo.deleteCategory(category)
     }
 
-    // 3. date
+    // 3. Health Connect
+    private val health = HealthSync(app)
+
+    private val _healthStatus = MutableStateFlow(HealthSync.Status.NOT_CONNECTED)
+    val healthStatus: StateFlow<HealthSync.Status> = _healthStatus
+
+    private val _healthMessage = MutableStateFlow<String?>(null)
+    val healthMessage: StateFlow<String?> = _healthMessage
+
+    init {
+        refreshHealthStatus()
+    }
+
+    fun refreshHealthStatus() = viewModelScope.launch {
+        _healthStatus.value = health.status()
+    }
+
+    // apelat după ce utilizatorul a răspuns la ecranul de permisiuni
+    fun onHealthPermissionsResult() = viewModelScope.launch {
+        _healthStatus.value = health.status()
+        if (_healthStatus.value == HealthSync.Status.CONNECTED) syncHealth()
+        else _healthMessage.value = "Permisiunile nu au fost acordate"
+    }
+
+    fun syncHealth() = viewModelScope.launch {
+        _healthMessage.value = "Se sincronizează…"
+        val days = health.syncIfPermitted()
+        _healthMessage.value = when {
+            days == null -> "Sincronizarea nu a reușit"
+            days == 0 -> "Nu s-au găsit date de somn sau pași"
+            days == 1 -> "Sincronizat · 1 zi cu date"
+            else -> "Sincronizat · $days zile cu date"
+        }
+    }
+
+    // 4. date
     fun deleteAllData(onDone: () -> Unit) = viewModelScope.launch {
         // clearAllTables nu are voie să ruleze pe firul principal
         withContext(Dispatchers.IO) { db.clearAllTables() }

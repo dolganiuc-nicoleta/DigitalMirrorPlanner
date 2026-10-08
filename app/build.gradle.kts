@@ -50,6 +50,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.navigation:navigation-compose:2.9.0")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.health.connect:connect-client:1.1.0")
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     testImplementation(libs.junit)

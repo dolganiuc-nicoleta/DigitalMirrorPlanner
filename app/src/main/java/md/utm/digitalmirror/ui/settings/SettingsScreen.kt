@@ -1,6 +1,10 @@
 package md.utm.digitalmirror.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.health.connect.client.PermissionController
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.health.HealthSync
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +33,14 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     var deleting by remember { mutableStateOf<Category?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
     var newCategory by remember { mutableStateOf("") }
+
+    val healthStatus by vm.healthStatus.collectAsState()
+    val healthMessage by vm.healthMessage.collectAsState()
+
+    // ecranul de permisiuni Health Connect
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { vm.onHealthPermissionsResult() }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Setări") }) }
@@ -107,7 +120,49 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
-            // 3. date
+            // 3. Health Connect
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Somn și pași")
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        when (healthStatus) {
+                            HealthSync.Status.CONNECTED -> {
+                                Text("✓ Conectat la Health Connect")
+                                Hint("Somnul și pașii se actualizează la fiecare deschidere a aplicației")
+                                OutlinedButton(onClick = { vm.syncHealth() }) { Text("Sincronizează acum") }
+                            }
+                            HealthSync.Status.NOT_CONNECTED -> {
+                                Text("Citește somnul și pașii din Health Connect")
+                                Hint("Datele sunt folosite doar local, pentru recomandări")
+                                Button(onClick = {
+                                    healthPermissionLauncher.launch(HealthSync.PERMISSIONS)
+                                }) { Text("Conectează") }
+                            }
+                            HealthSync.Status.UPDATE_REQUIRED -> {
+                                Text("Health Connect trebuie actualizat")
+                                OutlinedButton(onClick = {
+                                    val uri = Uri.parse(
+                                        "market://details?id=com.google.android.apps.healthdata"
+                                    )
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                }) { Text("Deschide Magazin Play") }
+                            }
+                            HealthSync.Status.NOT_AVAILABLE -> {
+                                Text("Health Connect nu este disponibil pe acest telefon")
+                            }
+                        }
+                        healthMessage?.let { Hint(it) }
+                    }
+                }
+            }
+
+            // 4. date
             item {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Date")

@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Activity::class,
         WorkSession::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -37,6 +37,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE activity ADD COLUMN postponedCount INTEGER NOT NULL DEFAULT 0")
             }
         }
+
+        // v2 → v3: somnul din Health Connect
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE daily_activity ADD COLUMN sleepMinutes INTEGER")
+                db.execSQL("ALTER TABLE daily_activity ADD COLUMN bedtimeMinute INTEGER")
+                db.execSQL("ALTER TABLE daily_activity ADD COLUMN wakeMinute INTEGER")
+            }
+        }
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -45,6 +54,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "digitalmirror.db"
                 )
                     .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }
