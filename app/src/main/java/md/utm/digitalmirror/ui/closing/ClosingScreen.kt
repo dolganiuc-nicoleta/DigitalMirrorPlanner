@@ -3,13 +3,17 @@ package md.utm.digitalmirror.ui.closing
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
+import java.time.LocalDate
 
 private val CLOSED_STATES = setOf("DONE", "PARTIAL", "POSTPONED", "ABANDONED")
 
@@ -32,6 +36,7 @@ fun ClosingScreen(
     val activities by vm.activities.collectAsState()
     val tracked by vm.tracked.collectAsState()
     val reflection by vm.reflection.collectAsState()
+    val daily by vm.daily.collectAsState()
 
     val open = activities.filter { it.state !in CLOSED_STATES }
     val closed = activities.filter { it.state in CLOSED_STATES }
@@ -41,6 +46,14 @@ fun ClosingScreen(
     var workedOn by remember(reflection) { mutableStateOf(reflection?.workedOn ?: "") }
     var blockers by remember(reflection) { mutableStateOf(reflection?.blockers ?: "") }
     var note by remember(reflection) { mutableStateOf(reflection?.note ?: "") }
+
+    // somnul, precompletat din Health Connect sau din ce a introdus utilizatorul anterior
+    var bedtime by remember(daily) { mutableStateOf(daily?.bedtimeMinute) }
+    var wake by remember(daily) { mutableStateOf(daily?.wakeMinute) }
+    var sleepEdited by remember(daily) { mutableStateOf(false) }
+    var picking by remember { mutableStateOf<String?>(null) }   // "bed" sau "wake"
+
+    val isToday = date == LocalDate.now().toString()
 
     Scaffold(
         topBar = {
@@ -89,10 +102,27 @@ fun ClosingScreen(
                 }
             }
 
-            // 3. reflecția zilei
+            // 3. somnul
+            item {
+                SleepCard(
+                    title = if (isToday) "Somnul de azi-noapte" else "Somnul din noaptea dinainte",
+                    bedtime = bedtime,
+                    wake = wake,
+                    sourceHint = when {
+                        sleepEdited -> null
+                        daily?.sleepSource == "HEALTH" -> "din Health Connect · poți corecta"
+                        daily?.sleepSource == "MANUAL" -> "introdus de tine"
+                        else -> null
+                    },
+                    onPickBedtime = { picking = "bed" },
+                    onPickWake = { picking = "wake" }
+                )
+            }
+
+            // 4. reflecția zilei
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(4.dp))
                     SectionTitle("Reflecția zilei")
                     Hint("Cum a fost ziua? 1 = foarte grea, 5 = foarte bună")
 
@@ -129,7 +159,13 @@ fun ClosingScreen(
                     )
 
                     Button(
-                        onClick = { vm.saveReflection(mood, workedOn, blockers, note, onDone = onBack) },
+                        onClick = {
+                            vm.save(
+                                mood, workedOn, blockers, note,
+                                bedtime, wake, sleepEdited,
+                                onDone = onBack
+                            )
+                        },
                         enabled = mood > 0,
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -139,6 +175,90 @@ fun ClosingScreen(
             }
         }
     }
+
+    // alegerea orei de culcare / trezire
+    picking?.let { which ->
+        SleepTimeDialog(
+            title = if (which == "bed") "Ora de culcare" else "Ora de trezire",
+            initialMinute = if (which == "bed") bedtime ?: 23 * 60 else wake ?: 7 * 60,
+            onDismiss = { picking = null },
+            onConfirm = { minute ->
+                if (which == "bed") bedtime = minute else wake = minute
+                sleepEdited = true
+                picking = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun SleepCard(
+    title: String,
+    bedtime: Int?,
+    wake: Int?,
+    sourceHint: String?,
+    onPickBedtime: () -> Unit,
+    onPickWake: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(title, fontWeight = FontWeight.Medium)
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(onClick = onPickBedtime) {
+                    Text("😴 ${bedtime?.let { formatMinute(it) } ?: "culcare"}")
+                }
+                Text("→")
+                OutlinedButton(onClick = onPickWake) {
+                    Text("☀️ ${wake?.let { formatMinute(it) } ?: "trezire"}")
+                }
+            }
+
+            if (bedtime != null && wake != null) {
+                val minutes = ClosingViewModel.sleepDuration(bedtime, wake)
+                Text(
+                    "Ai dormit " + if (minutes % 60 == 0) "${minutes / 60}h" else "${minutes / 60}h ${minutes % 60}m",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                Hint("Opțional · ajută la recomandări")
+            }
+
+            sourceHint?.let { Hint(it) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SleepTimeDialog(
+    title: String,
+    initialMinute: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    val state = rememberTimePickerState(
+        initialHour = initialMinute / 60,
+        initialMinute = initialMinute % 60,
+        is24Hour = true
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { TimePicker(state = state) },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Anulează") }
+        }
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -173,6 +293,7 @@ private fun ResolveCard(
                 value = minutes,
                 onValueChange = { input -> minutes = input.filter { it.isDigit() } },
                 label = { Text("Durata reală (minute)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true
             )
 
@@ -197,3 +318,5 @@ private fun Hint(text: String) =
 
 private fun labelOf(state: String) =
     STATE_OPTIONS.firstOrNull { it.first == state }?.second ?: state
+
+private fun formatMinute(m: Int): String = "%02d:%02d".format(m / 60, m % 60)
