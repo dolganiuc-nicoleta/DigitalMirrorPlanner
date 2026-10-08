@@ -10,6 +10,9 @@ import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.domain.DurationEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.TitleKey
+import md.utm.digitalmirror.domain.HistoryEstimator
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.time.Instant
 import java.time.ZoneId
 class PlannerRepository(
@@ -137,5 +140,19 @@ class PlannerRepository(
     suspend fun deleteCategory(category: Category) {
         activityDao.clearCategory(category.id)   // întâi scoatem categoria de pe activități
         categoryDao.delete(category)
+    }
+
+    suspend fun estimatorHistory(): List<HistoryEstimator.Sample> {
+        val today = LocalDate.now()
+        return activityDao.getEstimatorHistory(300).map {
+            HistoryEstimator.Sample(
+                titleKey = it.titleKey,
+                categoryId = it.categoryId,
+                // ce a crezut utilizatorul: ghicitul, iar la activitățile vechi durata planificată
+                baseMinutes = it.userGuessMinutes ?: it.userEstimatedMinutes,
+                actualMinutes = it.actualMinutes ?: 0,
+                ageDays = ChronoUnit.DAYS.between(LocalDate.parse(it.date), today).toDouble()
+            )
+        }
     }
 }

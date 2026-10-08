@@ -13,6 +13,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
+import md.utm.digitalmirror.ui.components.DurationField
+import md.utm.digitalmirror.ui.components.formatDuration
 import java.time.LocalDate
 
 private val CLOSED_STATES = setOf("DONE", "PARTIAL", "POSTPONED", "ABANDONED")
@@ -91,12 +93,12 @@ fun ClosingScreen(
                         val est = closed.sumOf { it.userEstimatedMinutes ?: 0 }
                         val real = closed.sumOf { it.actualMinutes ?: 0 }
                         SectionTitle("Închise (${closed.size})")
-                        Hint("Estimat $est min · real $real min")
+                        Hint("Planificat ${formatDuration(est)} · real ${formatDuration(real)}")
                     }
                 }
                 items(closed, key = { it.id }) { activity ->
                     Text(
-                        "• ${activity.title}: ${labelOf(activity.state)}, ${activity.actualMinutes ?: 0} min",
+                        "• ${activity.title}: ${labelOf(activity.state)}, ${formatDuration(activity.actualMinutes ?: 0)}",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -223,7 +225,7 @@ private fun SleepCard(
             if (bedtime != null && wake != null) {
                 val minutes = ClosingViewModel.sleepDuration(bedtime, wake)
                 Text(
-                    "Ai dormit " + if (minutes % 60 == 0) "${minutes / 60}h" else "${minutes / 60}h ${minutes % 60}m",
+                    "Ai dormit ${formatDuration(minutes)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
             } else {
@@ -268,7 +270,7 @@ private fun ResolveCard(
     initialMinutes: Int,
     onSave: (Int, String) -> Unit
 ) {
-    var minutes by remember(activity.id, initialMinutes) { mutableStateOf(initialMinutes.toString()) }
+    var minutes by remember(activity.id, initialMinutes) { mutableStateOf<Int?>(initialMinutes) }
     var state by remember(activity.id) { mutableStateOf("DONE") }
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -277,7 +279,7 @@ private fun ResolveCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(activity.title, fontWeight = FontWeight.Medium)
-            activity.userEstimatedMinutes?.let { Hint("estimat $it min") }
+            activity.userEstimatedMinutes?.let { Hint("planificat ${formatDuration(it)}") }
 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 STATE_OPTIONS.forEach { (value, label) ->
@@ -289,15 +291,14 @@ private fun ResolveCard(
                 }
             }
 
-            OutlinedTextField(
-                value = minutes,
-                onValueChange = { input -> minutes = input.filter { it.isDigit() } },
-                label = { Text("Durata reală (minute)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true
+            DurationField(
+                label = "Durata reală",
+                minutes = minutes,
+                onChange = { minutes = it },
+                showQuickValues = false
             )
 
-            Button(onClick = { onSave(minutes.toIntOrNull() ?: 0, state) }) {
+            Button(onClick = { onSave(minutes ?: 0, state) }, enabled = minutes != null) {
                 Text("Confirmă")
             }
         }

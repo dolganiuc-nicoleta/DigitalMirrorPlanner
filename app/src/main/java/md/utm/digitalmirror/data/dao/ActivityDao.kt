@@ -75,4 +75,16 @@ interface ActivityDao {
 
     @Query("UPDATE activity SET categoryId = NULL WHERE categoryId = :categoryId")
     suspend fun clearCategory(categoryId: Long)
+    @Query("""
+    SELECT * FROM activity
+    WHERE state = 'DONE'
+      AND actualMinutes > 0
+      AND (actualSource IN ('TIMER', 'MANUAL') OR actualSource IS NULL)
+    ORDER BY date DESC
+    LIMIT :limit
+""")
+    suspend fun getEstimatorHistory(limit: Int): List<Activity>
+
+
+
 }

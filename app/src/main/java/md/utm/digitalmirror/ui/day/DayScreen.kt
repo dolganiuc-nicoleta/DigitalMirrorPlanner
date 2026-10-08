@@ -3,7 +3,9 @@ package md.utm.digitalmirror.ui.day
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,9 +17,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DailyActivity
-import md.utm.digitalmirror.domain.DurationEstimator
+import md.utm.digitalmirror.domain.HistoryEstimator
+import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
+import md.utm.digitalmirror.ui.components.DurationField
+import md.utm.digitalmirror.ui.components.formatDuration
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
@@ -168,12 +174,12 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             categories = categories,
             date = date,
             dayActivities = activities,
+            loadEstimatorHistory = { vm.estimatorHistory() },
             loadSlotHistory = { vm.slotHistory(it) },
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
-            loadHistory = { vm.durationHistory(it) },
-            onConfirm = { title, categoryId, minutes, start, suggested ->
-                vm.addActivity(title, categoryId, minutes, start, suggested)
+            onConfirm = { r ->
+                vm.addActivity(r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.guessMinutes, r.estimate)
                 showAddDialog = false
             }
         )
@@ -186,12 +192,12 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             categories = categories,
             date = date,
             dayActivities = activities,
+            loadEstimatorHistory = { vm.estimatorHistory() },
             loadSlotHistory = { vm.slotHistory(it) },
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
-            loadHistory = { vm.durationHistory(it) },
-            onConfirm = { title, categoryId, minutes, start, suggested ->
-                vm.editActivity(activity.id, title, categoryId, minutes, start, suggested)
+            onConfirm = { r ->
+                vm.editActivity(activity.id, r.title, r.categoryId, r.plannedMinutes, r.startMinute)
                 editing = null
             }
         )
@@ -261,8 +267,8 @@ private fun ActivityRow(
                             add(if (end != null) "${formatMinute(start)}–${formatMinute(end)}" else formatMinute(start))
                         }
                         categoryName?.let { add(it) }
-                        activity.userEstimatedMinutes?.let { add("estimat ${it}m") }
-                        if (!isRunning) activity.actualMinutes?.let { add("real ${it}m") }
+                        activity.userEstimatedMinutes?.let { add("planificat ${formatDuration(it)}") }
+                        if (!isRunning) activity.actualMinutes?.let { add("real ${formatDuration(it)}") }
                         add(stateLabel(activity.state))
                         postponedLabel(activity.postponedCount)?.let { add(it) }
                     }.joinToString(" · ")
@@ -367,7 +373,7 @@ private fun HealthSummary(data: DailyActivity) {
         data.sleepMinutes?.let { minutes ->
             val range = if (data.bedtimeMinute != null && data.wakeMinute != null)
                 " (${formatMinute(data.bedtimeMinute)}–${formatMinute(data.wakeMinute)})" else ""
-            add("😴 ${minutes / 60}h ${minutes % 60}m$range")
+            add("😴 ${formatDuration(minutes)}$range")
         }
         data.steps?.let { add("👣 ${"%,d".format(it).replace(',', '.')} pași") }
     }
@@ -416,7 +422,7 @@ private fun FinishDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int, String) -> Unit
 ) {
-    var minutes by remember { mutableStateOf(draft.trackedMinutes.toString()) }
+    var minutes by remember { mutableStateOf<Int?>(draft.trackedMinutes) }
     var state by remember { mutableStateOf("DONE") }
 
     AlertDialog(
@@ -427,15 +433,14 @@ private fun FinishDialog(
                 Text(draft.activity.title, fontWeight = FontWeight.Medium)
 
                 draft.activity.userEstimatedMinutes?.let {
-                    Text("Estimat $it min · cronometrat ${draft.trackedMinutes} min")
+                    Text("Planificat ${formatDuration(it)} · cronometrat ${formatDuration(draft.trackedMinutes)}")
                 }
 
-                OutlinedTextField(
-                    value = minutes,
-                    onValueChange = { input -> minutes = input.filter { it.isDigit() } },
-                    label = { Text("Durata reală (minute)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
+                DurationField(
+                    label = "Durata reală",
+                    minutes = minutes,
+                    onChange = { minutes = it },
+                    showQuickValues = false
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -454,8 +459,8 @@ private fun FinishDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(minutes.toIntOrNull() ?: 0, state) },
-                enabled = minutes.isNotEmpty()
+                onClick = { onConfirm(minutes ?: 0, state) },
+                enabled = minutes != null
             ) { Text("Salvează") }
         },
         dismissButton = {
@@ -464,7 +469,23 @@ private fun FinishDialog(
     )
 }
 
-// formular comun pentru adăugare (initial = null) și editare (initial = activitatea)
+// ce întoarce formularul de activitate
+private data class ActivityFormResult(
+    val title: String,
+    val categoryId: Long?,
+    val plannedMinutes: Int?,
+    val startMinute: Int?,
+    val guessMinutes: Int?,                    // doar la adăugare
+    val estimate: HistoryEstimator.Estimate?   // doar la adăugare
+)
+
+/**
+ * Formular comun pentru adăugare (initial = null) și editare (initial = activitatea).
+ *
+ * La adăugare, durata se stabilește în doi pași, ca utilizatorul să nu fie influențat de propunere:
+ *  1. „Cât crezi că îți ia?”  → ghicitul lui (M0), salvat separat;
+ *  2. abia apoi apare propunerea din istoric (M3), iar el alege cu ce durată planifică.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ActivityDialog(
@@ -472,31 +493,49 @@ private fun ActivityDialog(
     categories: List<Category>,
     date: String,
     dayActivities: List<Activity>,
+    loadEstimatorHistory: suspend () -> List<HistoryEstimator.Sample>,
     loadSlotHistory: suspend (Long) -> List<SlotRecommender.Outcome>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
-    loadHistory: suspend (Long) -> List<DurationEstimator.Sample>,
-    onConfirm: (String, Long?, Int?, Int?, Int?) -> Unit
+    onConfirm: (ActivityFormResult) -> Unit
 ) {
+    val isEdit = initial != null
+
     var title by remember { mutableStateOf(initial?.title ?: "") }
-    var minutes by remember { mutableStateOf(initial?.userEstimatedMinutes?.toString() ?: "") }
     var selectedCategory by remember {
         mutableStateOf(categories.find { it.id == initial?.categoryId })
     }
     var newCategory by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
     var startMinute by remember { mutableStateOf(initial?.plannedStartMinute) }
+    var showTimePicker by remember { mutableStateOf(false) }
 
-    // istoricul categoriei alese; se reîncarcă la schimbarea categoriei
-    val history by produceState(emptyList<DurationEstimator.Sample>(), selectedCategory?.id) {
-        value = selectedCategory?.id?.let { loadHistory(it) } ?: emptyList()
+    // pasul 1: ghicitul utilizatorului
+    var guessInput by remember { mutableStateOf<Int?>(null) }
+    var revealed by remember { mutableStateOf(isEdit) }   // la editare nu mai cerem ghicitul
+    var guessMinutes by remember { mutableStateOf<Int?>(null) }
+
+    // pasul 2: durata planificată finală
+    var plannedMinutes by remember { mutableStateOf(initial?.userEstimatedMinutes) }
+
+    // istoricul pentru estimator, încărcat o singură dată
+    val history by produceState(emptyList<HistoryEstimator.Sample>()) {
+        value = loadEstimatorHistory()
     }
 
-    // propunerea acceptată cu „Folosește” (ca să nu recalculăm peste ea)
-    var appliedSuggestion by remember { mutableStateOf(initial?.estimatedMinutes) }
-    val typedMinutes = minutes.toIntOrNull()
-    val isApplied = appliedSuggestion != null && typedMinutes == appliedSuggestion
-    val suggestion = if (isApplied) null else DurationEstimator.suggest(history, typedMinutes)
+    // propunerea se recalculează când se schimbă titlul sau categoria
+    val titleKey = TitleKey.of(title)
+    val estimate = remember(history, titleKey, selectedCategory?.id, guessMinutes, revealed) {
+        if (!revealed || isEdit) null
+        else HistoryEstimator.estimate(history, titleKey, selectedCategory?.id, guessMinutes)
+    }
+
+    // la dezvăluire, durata planificată pornește de la propunere (utilizatorul o poate schimba)
+    LaunchedEffect(estimate?.minutes) {
+        if (!isEdit && estimate != null && plannedMinutes == null) {
+            plannedMinutes = guessMinutes ?: estimate.minutes
+        }
+    }
 
     // istoricul orelor de start pentru categoria aleasă
     val slotHistory by produceState(emptyList<SlotRecommender.Outcome>(), selectedCategory?.id) {
@@ -507,16 +546,14 @@ private fun ActivityDialog(
     val slotSuggestion = run {
         val day = LocalDate.parse(date)
         val today = LocalDate.now()
-        if (startMinute != null || day.isBefore(today)) return@run null
+        if (!revealed || startMinute != null || day.isBefore(today)) return@run null
 
-        // intervalele deja ocupate de celelalte activități ale zilei
         val busy = dayActivities
             .filter { it.id != initial?.id && it.state != "ABANDONED" && it.state != "POSTPONED" }
             .mapNotNull { a ->
                 a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) }
             }
 
-        // azi nu propunem ore care au trecut deja
         val earliest = if (day == today) {
             val now = LocalTime.now()
             maxOf(7 * 60, now.hour * 60 + now.minute + 10)
@@ -524,23 +561,25 @@ private fun ActivityDialog(
 
         SlotRecommender.suggest(
             history = slotHistory,
-            durationMinutes = typedMinutes ?: suggestion?.minutes ?: 30,
+            durationMinutes = plannedMinutes ?: estimate?.minutes ?: 30,
             busy = busy,
             earliestStart = earliest
         )
     }
-    var showTimePicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "Activitate nouă" else "Editează activitatea") },
+        title = { Text(if (isEdit) "Editează activitatea" else "Activitate nouă") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
 
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Denumire") },
+                    label = { Text("Ce vrei să faci?") },
                     singleLine = true
                 )
 
@@ -597,64 +636,102 @@ private fun ActivityDialog(
                     ) { Text("Adaugă") }
                 }
 
-                OutlinedTextField(
-                    value = minutes,
-                    onValueChange = { input -> minutes = input.filter { it.isDigit() } },
-                    label = { Text("Durată estimată (minute)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
-
-                // recomandarea duratei pe baza istoricului
-                if (isApplied) {
-                    Text(
-                        "✓ Durată propusă pe baza istoricului",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                if (!revealed) {
+                    // pasul 1: utilizatorul spune cât crede, fără să vadă propunerea
+                    DurationField(
+                        label = "Cât crezi că îți ia?",
+                        minutes = guessInput,
+                        onChange = { guessInput = it }
                     )
-                } else if (suggestion != null) {
-                    SuggestionHint(
-                        suggestion = suggestion,
-                        userEstimate = typedMinutes,
-                        categoryName = selectedCategory?.name ?: "",
-                        onUse = {
-                            minutes = suggestion.minutes.toString()
-                            appliedSuggestion = suggestion.minutes
-                        }
-                    )
-                }
-
-                // recomandarea orei de start
-                slotSuggestion?.let { slot ->
-                    SlotHint(
-                        slot = slot,
-                        categoryName = selectedCategory?.name ?: "",
-                        onUse = { startMinute = slot.startMinute }
-                    )
-                }
-
-                // ora de start (opțională)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(onClick = { showTimePicker = true }) {
-                        Text(startMinute?.let { "Ora: ${formatMinute(it)}" } ?: "Alege ora de start")
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                guessMinutes = guessInput
+                                revealed = true
+                            },
+                            enabled = title.isNotBlank() && (guessInput ?: 0) > 0
+                        ) { Text("Mai departe") }
+                        TextButton(
+                            onClick = {
+                                guessMinutes = null
+                                revealed = true
+                            },
+                            enabled = title.isNotBlank()
+                        ) { Text("Nu știu") }
                     }
-                    if (startMinute != null) {
-                        TextButton(onClick = { startMinute = null }) { Text("Fără oră") }
+                } else {
+                    // pasul 2: propunerea din istoric și durata planificată
+                    estimate?.let { e ->
+                        EstimateCard(
+                            estimate = e,
+                            guessMinutes = guessMinutes,
+                            categoryName = selectedCategory?.name,
+                            onUseEstimate = { plannedMinutes = e.minutes },
+                            onKeepGuess = { guessMinutes?.let { plannedMinutes = it } }
+                        )
+                    }
+
+                    if (isEdit) {
+                        initial?.estimatedMinutes?.let { proposed ->
+                            Hint(
+                                "La creare, propunerea a fost ~${formatDuration(proposed)}" +
+                                        (initial?.userGuessMinutes?.let { " · tu ai estimat ${formatDuration(it)}" } ?: "")
+                            )
+                        }
+                    }
+
+                    DurationField(
+                        label = "Durata planificată",
+                        minutes = plannedMinutes,
+                        onChange = { plannedMinutes = it },
+                        showQuickValues = estimate == null || estimate.level == HistoryEstimator.Level.PRIOR
+                    )
+
+                    // recomandarea orei de start
+                    slotSuggestion?.let { slot ->
+                        SlotHint(
+                            slot = slot,
+                            categoryName = selectedCategory?.name ?: "",
+                            onUse = { startMinute = slot.startMinute }
+                        )
+                    }
+
+                    // ora de start (opțională)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(onClick = { showTimePicker = true }) {
+                            Text(startMinute?.let { "Ora: ${formatMinute(it)}" } ?: "Alege ora de start")
+                        }
+                        if (startMinute != null) {
+                            TextButton(onClick = { startMinute = null }) { Text("Fără oră") }
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    val suggested = if (isApplied) appliedSuggestion else suggestion?.minutes
-                    onConfirm(title, selectedCategory?.id, minutes.toIntOrNull(), startMinute, suggested)
-                },
-                enabled = title.isNotBlank()
-            ) { Text("Salvează") }
+            if (revealed) {
+                TextButton(
+                    onClick = {
+                        onConfirm(
+                            ActivityFormResult(
+                                title = title,
+                                categoryId = selectedCategory?.id,
+                                plannedMinutes = plannedMinutes,
+                                startMinute = startMinute,
+                                guessMinutes = guessMinutes,
+                                estimate = estimate
+                            )
+                        )
+                    },
+                    enabled = title.isNotBlank()
+                ) { Text("Salvează") }
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Anulează") }
@@ -673,51 +750,95 @@ private fun ActivityDialog(
     }
 }
 
-// caseta cu propunerea de durată și explicația ei
+// caseta cu propunerea estimatorului, intervalul și explicația ei
 @Composable
-private fun SuggestionHint(
-    suggestion: DurationEstimator.Suggestion,
-    userEstimate: Int?,
-    categoryName: String,
-    onUse: () -> Unit
+private fun EstimateCard(
+    estimate: HistoryEstimator.Estimate,
+    guessMinutes: Int?,
+    categoryName: String?,
+    onUseEstimate: () -> Unit,
+    onKeepGuess: () -> Unit
 ) {
-    val deviation = suggestion.deviationPercent
-    val realistic = userEstimate != null && abs(deviation) <= 10
-
-    val message = when {
-        userEstimate == null -> "De obicei durează ~${suggestion.minutes} min"
-        realistic -> "Estimarea pare realistă"
-        deviation > 0 -> "De obicei îți ia cu $deviation% mai mult · propunere ~${suggestion.minutes} min"
-        else -> "De obicei îți ia cu ${abs(deviation)}% mai puțin · propunere ~${suggestion.minutes} min"
-    }
-
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
-        shape = MaterialTheme.shapes.small,
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            val color = MaterialTheme.colorScheme.onSecondaryContainer
+
+            if (estimate.level == HistoryEstimator.Level.PRIOR) {
                 Text(
-                    message,
+                    "Încă nu am istoric pentru asta",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    color = color
                 )
                 Text(
-                    "pe baza ultimelor ${suggestion.sampleSize} activități din $categoryName",
+                    "Planifică după estimarea ta. După câteva activități finalizate, propunerile vor veni din istoricul tău.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    color = color
                 )
+                return@Column
             }
-            if (!realistic) {
-                TextButton(onClick = onUse) { Text("Folosește") }
+
+            Text("Din istoricul tău", style = MaterialTheme.typography.labelMedium, color = color)
+            Text(
+                "~${formatDuration(estimate.minutes)}",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Medium,
+                color = color
+            )
+            Text(
+                "de obicei între ${formatDuration(estimate.lowMinutes)} și ${formatDuration(estimate.highMinutes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = color
+            )
+
+            // de ce: ce date au stat la baza propunerii
+            val why = buildList {
+                if (estimate.activityCount > 0 && estimate.activityTypicalMinutes != null) {
+                    add(
+                        "${estimate.activityCount} " +
+                                (if (estimate.activityCount == 1) "sesiune la fel" else "sesiuni la fel") +
+                                ", de obicei ${formatDuration(estimate.activityTypicalMinutes)}"
+                    )
+                }
+                estimate.categoryRatio?.let { ratio ->
+                    val percent = ((ratio - 1) * 100).roundToInt()
+                    val where = categoryName?.let { "la $it" } ?: "în această categorie"
+                    add(
+                        when {
+                            abs(percent) <= 10 -> "$where estimezi de obicei corect"
+                            percent > 0 -> "$where durează de obicei cu $percent% mai mult decât estimezi"
+                            else -> "$where durează de obicei cu ${abs(percent)}% mai puțin decât estimezi"
+                        }
+                    )
+                }
+            }
+            why.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = color) }
+
+            if (guessMinutes != null && guessMinutes != estimate.minutes) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onUseEstimate) { Text("Folosește ~${formatDuration(estimate.minutes)}") }
+                    TextButton(onClick = onKeepGuess) { Text("Păstrez ${formatDuration(guessMinutes)}") }
+                }
+            } else if (guessMinutes == null) {
+                TextButton(onClick = onUseEstimate) { Text("Folosește ~${formatDuration(estimate.minutes)}") }
             }
         }
     }
 }
+
+@Composable
+private fun Hint(text: String) =
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 
 // caseta cu intervalul recomandat și explicația lui
 @Composable
