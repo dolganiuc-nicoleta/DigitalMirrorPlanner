@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.db.AppDatabase
+import android.net.Uri
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.export.DataExporter
 import md.utm.digitalmirror.data.health.HealthSync
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.reminder.ReminderPrefs
@@ -93,7 +95,22 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // 4. date
+    // 4. export
+    val participantId: String = DataExporter.participantId(app)
+
+    fun exportFileName(full: Boolean) = DataExporter.suggestedFileName(app, full)
+
+    fun export(uri: Uri, full: Boolean, onDone: (String) -> Unit) = viewModelScope.launch {
+        val message = try {
+            val count = DataExporter.export(app, uri, full)
+            "Export gata · $count activități"
+        } catch (e: Exception) {
+            "Exportul nu a reușit: ${e.message}"
+        }
+        onDone(message)
+    }
+
+    // 5. ștergerea datelor
     fun deleteAllData(onDone: () -> Unit) = viewModelScope.launch {
         // clearAllTables nu are voie să ruleze pe firul principal
         withContext(Dispatchers.IO) { db.clearAllTables() }

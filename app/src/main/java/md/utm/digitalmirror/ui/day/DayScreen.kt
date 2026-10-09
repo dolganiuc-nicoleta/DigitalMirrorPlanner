@@ -182,6 +182,7 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             date = date,
             dayActivities = activities,
             loadEstimatorHistory = { vm.estimatorHistory() },
+            priorRatio = vm.priorRatio,
             loadSlotHistory = { vm.slotHistory(it) },
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
@@ -200,6 +201,7 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
             date = date,
             dayActivities = activities,
             loadEstimatorHistory = { vm.estimatorHistory() },
+            priorRatio = vm.priorRatio,
             loadSlotHistory = { vm.slotHistory(it) },
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
@@ -552,6 +554,7 @@ private fun ActivityDialog(
     date: String,
     dayActivities: List<Activity>,
     loadEstimatorHistory: suspend () -> List<HistoryEstimator.Sample>,
+    priorRatio: Double,
     loadSlotHistory: suspend (Long) -> List<SlotRecommender.Outcome>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
@@ -585,7 +588,7 @@ private fun ActivityDialog(
     val titleKey = TitleKey.of(title)
     val estimate = remember(history, titleKey, selectedCategory?.id, guessMinutes, revealed) {
         if (!revealed || isEdit) null
-        else HistoryEstimator.estimate(history, titleKey, selectedCategory?.id, guessMinutes)
+        else HistoryEstimator.estimate(history, titleKey, selectedCategory?.id, guessMinutes, priorRatio)
     }
 
     // la dezvăluire, durata planificată pornește de la propunere (utilizatorul o poate schimba)
@@ -834,11 +837,26 @@ private fun EstimateCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = color
                 )
-                Text(
-                    "Planifică după estimarea ta. După câteva activități finalizate, propunerile vor veni din istoricul tău.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = color
-                )
+                if (guessMinutes != null && guessMinutes != estimate.minutes) {
+                    // fără istoric, propunerea vine doar din tiparul zilei ales la configurare
+                    Text(
+                        "De obicei oamenii își subestimează activitățile, iar din tiparul tău de zi " +
+                                "pornesc de la ~${formatDuration(estimate.minutes)}. După câteva activități finalizate, " +
+                                "propunerile vor veni din istoricul tău.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = color
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onUseEstimate) { Text("Folosește ~${formatDuration(estimate.minutes)}") }
+                        TextButton(onClick = onKeepGuess) { Text("Păstrez ${formatDuration(guessMinutes)}") }
+                    }
+                } else {
+                    Text(
+                        "Planifică după estimarea ta. După câteva activități finalizate, propunerile vor veni din istoricul tău.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = color
+                    )
+                }
                 return@Column
             }
 

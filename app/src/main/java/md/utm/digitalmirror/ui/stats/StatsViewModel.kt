@@ -10,6 +10,7 @@ import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.domain.EstimateEvaluation
+import md.utm.digitalmirror.domain.ProductivityMap
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
@@ -62,6 +63,27 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
             ) { activities, categories -> buildState(period, activities, categories) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StatsUiState())
 
+    // harta orelor productive, pentru aceeași perioadă
+    val productivity: StateFlow<ProductivityMap.Result?> =
+        _period.flatMapLatest { period ->
+            val today = LocalDate.now()
+            val from = period.days?.let { today.minusDays(it - 1).toString() } ?: "0000-01-01"
+            repo.observeActivitiesInRange(from, today.toString()).mapLatest { list ->
+                ProductivityMap.compute(
+                    list.filter { it.state in setOf("DONE", "PARTIAL", "ABANDONED") }
+                        .mapNotNull { a ->
+                            // ora reală de start (prima pornire a cronometrului), altfel ora planificată
+                            val start = repo.firstStartMinute(a.id) ?: a.plannedStartMinute ?: return@mapNotNull null
+                            ProductivityMap.Outcome(
+                                weekday = LocalDate.parse(a.date).dayOfWeek.value,
+                                startMinute = start,
+                                success = a.state == "DONE"
+                            )
+                        }
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     fun setPeriod(period: StatsPeriod) {
         _period.value = period
     }
@@ -77,11 +99,8 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
         val usable = activities.filter {
             it.state == "DONE" &&
                     (it.userEstimatedMinutes ?: 0) > 0 &&
-                    it.actualMinutes != null &&
-                    // duratele copiate din plan nu spun nimic despre cât a durat de fapt
-                    it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL)
+                    it.actualMinutes != null
         }
-
         if (usable.isEmpty()) return StatsUiState(period = period, evaluation = evaluation)
 
         val names = categories.associate { it.id to it.name }

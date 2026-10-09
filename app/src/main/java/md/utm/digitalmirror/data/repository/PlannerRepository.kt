@@ -176,4 +176,10 @@ class PlannerRepository(
         }
     }
 
+    suspend fun firstStartMinute(activityId: Long): Int? =
+        sessionDao.firstStartFor(activityId)?.let { millis ->
+            val time = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime()
+            time.hour * 60 + time.minute
+        }
+
 }

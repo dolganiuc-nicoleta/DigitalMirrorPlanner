@@ -30,4 +30,8 @@ interface WorkSessionDao {
 
     @Query("SELECT * FROM work_session WHERE endedAt IS NULL LIMIT 1")
     fun observeRunning(): Flow<WorkSession?>
+
+    @Query("SELECT * FROM work_session ORDER BY startedAt")
+    suspend fun getAll(): List<WorkSession>
+
 }

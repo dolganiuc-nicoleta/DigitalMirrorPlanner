@@ -36,7 +36,6 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DigitalMirrorPlannerTheme {
-                RequestNotificationPermission()
                 AppNavigation(openClosingToday = openClosing)
             }
         }

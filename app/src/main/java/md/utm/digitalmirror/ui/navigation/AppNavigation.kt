@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -21,6 +22,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import md.utm.digitalmirror.ui.closing.ClosingScreen
 import md.utm.digitalmirror.ui.day.DayScreen
+import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
+import md.utm.digitalmirror.ui.onboarding.OnboardingScreen
 import md.utm.digitalmirror.ui.settings.SettingsScreen
 import md.utm.digitalmirror.ui.stats.StatsScreen
 import java.time.LocalDate
@@ -31,6 +34,7 @@ object Routes {
     const val STATS = "stats"
     const val SETTINGS = "settings"
     const val CLOSING = "closing/{date}"
+    const val ONBOARDING = "onboarding"
 
     fun closing(date: String) = "closing/$date"
 }
@@ -47,6 +51,9 @@ private val tabs = listOf(
 @Composable
 fun AppNavigation(openClosingToday: Boolean) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    // prima pornire: configurarea inițială; după aceea direct ecranul zilei
+    val startDestination = remember { if (OnboardingPrefs.isDone(context)) Routes.DAY else Routes.ONBOARDING }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
@@ -86,7 +93,7 @@ fun AppNavigation(openClosingToday: Boolean) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.DAY,
+            startDestination = startDestination,
             modifier = Modifier
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
@@ -100,6 +107,14 @@ fun AppNavigation(openClosingToday: Boolean) {
                     }
                 }
                 DayScreen(onCloseDay = { date -> navController.navigate(Routes.closing(date)) })
+            }
+
+            composable(Routes.ONBOARDING) {
+                OnboardingScreen(onFinish = {
+                    navController.navigate(Routes.DAY) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }   // înapoi nu mai duce la configurare
+                    }
+                })
             }
 
             composable(Routes.STATS) {

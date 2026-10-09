@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.health.connect.client.PermissionController
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,6 +33,16 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     var renaming by remember { mutableStateOf<Category?>(null) }
     var deleting by remember { mutableStateOf<Category?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
+
+    // exportul: utilizatorul alege unde salvează fișierul (Descărcări, Drive etc.)
+    var exportFull by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let {
+            vm.export(it, exportFull) { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+        }
+    }
     var newCategory by remember { mutableStateOf("") }
 
     val healthStatus by vm.healthStatus.collectAsState()
@@ -174,6 +185,24 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("Toate datele sunt stocate doar pe acest telefon.")
+
+                        // export JSON
+                        Hint("ID participant: ${vm.participantId}")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Include titlurile și textele")
+                                Hint(
+                                    if (exportFull) "Backup complet, pentru tine"
+                                    else "Anonimizat: fără titluri și fără textul reflecțiilor"
+                                )
+                            }
+                            Switch(checked = exportFull, onCheckedChange = { exportFull = it })
+                        }
+                        Button(onClick = { exportLauncher.launch(vm.exportFileName(exportFull)) }) {
+                            Text("Exportă datele (JSON)")
+                        }
+
+                        Spacer(Modifier.height(4.dp))
                         OutlinedButton(
                             onClick = { confirmReset = true },
                             colors = ButtonDefaults.outlinedButtonColors(

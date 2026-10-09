@@ -18,12 +18,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.domain.EstimateEvaluation
+import md.utm.digitalmirror.domain.ProductivityMap
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(vm: StatsViewModel = viewModel()) {
     val state by vm.state.collectAsState()
+    val productivity by vm.productivity.collectAsState()
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Statistici") }) }
@@ -51,6 +53,11 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                 item { EvaluationCard(evaluation) }
             }
 
+            // harta orelor productive
+            productivity?.takeIf { it.total > 0 }?.let { map ->
+                item { ProductivityCard(map) }
+            }
+
             val total = state.total
             if (total == null) {
                 item { EmptyHint() }
@@ -76,6 +83,80 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+        }
+    }
+}
+
+// grila zi × interval orar, colorată după rata de finalizare
+@Composable
+private fun ProductivityCard(map: ProductivityMap.Result) {
+    val days = listOf("L", "Ma", "Mi", "J", "V", "S", "D")
+    val filled = MaterialTheme.colorScheme.primary
+    val empty = MaterialTheme.colorScheme.surfaceVariant
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Când finalizezi cel mai des", style = MaterialTheme.typography.titleMedium)
+
+            // capul de tabel: intervalele orare
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(28.dp))
+                ProductivityMap.SLOT_STARTS.forEach { start ->
+                    Text(
+                        "%02d".format(start),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            (1..7).forEach { day ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        days[day - 1],
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.width(28.dp)
+                    )
+                    ProductivityMap.SLOT_STARTS.indices.forEach { slot ->
+                        val cell = map.cell(day, slot)
+                        val rate = cell.rate
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(22.dp)
+                                .padding(2.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (rate == null) empty
+                                    else filled.copy(alpha = (0.15f + 0.85f * rate.toFloat()))
+                                )
+                        )
+                    }
+                }
+            }
+
+            Text(
+                "Mai închis = finalizezi mai des activitățile începute atunci · gri = fără date",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            val conclusions = buildList {
+                map.bestSlot?.let { add("Cel mai bun interval al tău: ${it.label} (${it.percent}% finalizate · ${activitiesLabel(it.total)})") }
+                map.bestDay?.let { add("Cea mai bună zi: ${it.label} (${it.percent}% finalizate · ${activitiesLabel(it.total)})") }
+            }
+            if (conclusions.isEmpty()) {
+                Text(
+                    "Încă nu sunt destule activități pentru o concluzie (minim ${ProductivityMap.MIN_FOR_CONCLUSION} într-un interval).",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                conclusions.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
             }
         }
     }

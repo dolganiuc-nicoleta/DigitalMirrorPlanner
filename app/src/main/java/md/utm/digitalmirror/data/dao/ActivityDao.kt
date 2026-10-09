@@ -99,4 +99,6 @@ interface ActivityDao {
     @Query("SELECT * FROM activity WHERE date >= :fromDate AND state = 'PLANNED' AND plannedStartMinute IS NOT NULL")
     suspend fun getUpcomingPlanned(fromDate: String): List<Activity>
 
+    @Query("SELECT * FROM activity ORDER BY date, id")
+    suspend fun getAll(): List<Activity>
 }

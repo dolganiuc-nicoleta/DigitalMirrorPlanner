@@ -17,6 +17,7 @@ import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.reminder.ActivityReminders
+import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -156,6 +157,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         repo.updateActivity(updated)
         ActivityReminders.onActivityPlanned(app, updated)
     }
+
+    // valoarea de pornire a estimatorului, din tiparul ales la configurarea inițială
+    val priorRatio: Double get() = OnboardingPrefs.priorRatio(app)
 
     // istoricul pentru estimatorul pe niveluri (doar activități finalizate, din surse sigure)
     suspend fun estimatorHistory(): List<HistoryEstimator.Sample> = repo.estimatorHistory()
