@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.health.HealthSync
 
@@ -52,6 +53,24 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val healthPermissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { vm.onHealthPermissionsResult() }
+
+    // calendarul telefonului: permisiune obișnuită de citire
+    var calendarConnected by remember { mutableStateOf(CalendarReader.hasPermission(context)) }
+    var calendarDenied by remember { mutableStateOf(false) }
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        calendarConnected = granted
+        calendarDenied = !granted
+    }
+    val openAppSettings = {
+        context.startActivity(
+            Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null)
+            )
+        )
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Setări") }) }
@@ -173,7 +192,37 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
-            // 4. date
+            // 4. calendarul
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Calendar")
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (calendarConnected) {
+                            Text("✓ Calendarul telefonului este conectat")
+                            Hint("Evenimentele apar în ecranul zilei, iar orele ocupate sunt evitate în recomandări. Aplicația doar le citește.")
+                            OutlinedButton(onClick = openAppSettings) { Text("Gestionează permisiunea") }
+                        } else {
+                            Text("Vezi evenimentele din calendar lângă activitățile tale")
+                            Hint("Toate calendarele de pe telefon: Samsung, Google, Outlook. Doar citire, datele rămân pe telefon.")
+                            Button(onClick = {
+                                calendarPermissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
+                            }) { Text("Conectează") }
+                            if (calendarDenied) {
+                                Hint("Permisiunea a fost refuzată. O poți activa din setările aplicației → Permisiuni → Calendar.")
+                                OutlinedButton(onClick = openAppSettings) { Text("Deschide setările aplicației") }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. date
             item {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Date")

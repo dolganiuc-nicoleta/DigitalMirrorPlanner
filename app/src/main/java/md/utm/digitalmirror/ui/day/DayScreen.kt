@@ -10,7 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import md.utm.digitalmirror.data.calendar.CalendarReader
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -49,12 +54,23 @@ fun DayScreen(
     val reflection by vm.reflection.collectAsState()
     val health by vm.health.collectAsState()
     val dayLoad by vm.dayLoad.collectAsState()
+    val calendarEvents by vm.calendarEvents.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
     var postponing by remember { mutableStateOf<Activity?>(null) }   // activitatea pentru care alegem o zi
 
     LaunchedEffect(Unit) { vm.refreshRunning() }
+
+    // la revenirea în aplicație recitim calendarul (poate ai adăugat un eveniment între timp)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refreshCalendar()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val isToday = date == LocalDate.now().toString()
     val canClose = date <= LocalDate.now().toString()   // azi sau o zi trecută
@@ -90,7 +106,7 @@ fun DayScreen(
         }
     ) { padding ->
 
-        if (activities.isEmpty()) {
+        if (activities.isEmpty() && calendarEvents.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -125,6 +141,11 @@ fun DayScreen(
             ) {
                 // somnul și pașii zilei
                 health?.let { item { HealthSummary(it) } }
+
+                // evenimentele din calendarul telefonului
+                if (calendarEvents.isNotEmpty()) {
+                    item { CalendarCard(calendarEvents) }
+                }
 
                 // încărcarea zilei, doar pentru azi și zilele viitoare
                 dayLoad?.takeIf { date >= LocalDate.now().toString() && it.plannedMinutes > 0 }?.let { load ->
@@ -189,6 +210,7 @@ fun DayScreen(
             loadEstimatorHistory = { vm.estimatorHistory() },
             priorRatio = vm.priorRatio,
             loadSlotHistory = { vm.slotHistory(it) },
+            calendarEvents = calendarEvents,
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
@@ -208,6 +230,7 @@ fun DayScreen(
             loadEstimatorHistory = { vm.estimatorHistory() },
             priorRatio = vm.priorRatio,
             loadSlotHistory = { vm.slotHistory(it) },
+            calendarEvents = calendarEvents,
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
@@ -404,6 +427,40 @@ private fun HealthSummary(data: DailyActivity) {
 
 // cât e planificat azi față de cât reușește utilizatorul de obicei
 @Composable
+private fun CalendarCard(events: List<CalendarReader.Event>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "Din calendar",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            events.forEach { e ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (e.allDay) "toată ziua"
+                        else "${formatMinute(e.startMinute)}–${if (e.endMinute >= 24 * 60) "24:00" else formatMinute(e.endMinute)}",
+                        modifier = Modifier.width(100.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        e.title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DayLoadCard(load: DayLoad.Result) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -563,6 +620,7 @@ private fun ActivityDialog(
     loadEstimatorHistory: suspend () -> List<HistoryEstimator.Sample>,
     priorRatio: Double,
     loadSlotHistory: suspend (Long) -> List<SlotRecommender.Outcome>,
+    calendarEvents: List<CalendarReader.Event>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
     onConfirm: (ActivityFormResult) -> Unit
@@ -620,19 +678,23 @@ private fun ActivityDialog(
             .filter { it.id != initial?.id && it.state != "ABANDONED" && it.state != "POSTPONED" }
             .mapNotNull { a ->
                 a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) }
-            }
+            } +
+                // orele ocupate din calendar (fără cele de toată ziua și cele marcate „liber”)
+                calendarEvents.filter { it.busy }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) }
 
         val earliest = if (day == today) {
             val now = LocalTime.now()
             maxOf(7 * 60, now.hour * 60 + now.minute + 10)
         } else 7 * 60
 
+        val duration = plannedMinutes ?: estimate?.minutes ?: 30
+        // întâi din istoric; dacă nu avem destule date, măcar primul interval liber
         SlotRecommender.suggest(
             history = slotHistory,
-            durationMinutes = plannedMinutes ?: estimate?.minutes ?: 30,
+            durationMinutes = duration,
             busy = busy,
             earliestStart = earliest
-        )
+        ) ?: SlotRecommender.firstFree(duration, busy, earliest)
     }
 
     AlertDialog(
@@ -941,13 +1003,16 @@ private fun SlotHint(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Interval recomandat ${formatMinute(slot.startMinute)}–${formatMinute(slot.endMinute)}",
+                    (if (slot.fromHistory) "Interval recomandat " else "Interval liber ") +
+                            "${formatMinute(slot.startMinute)}–${formatMinute(slot.endMinute)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
                 Text(
-                    "~${slot.successPercent}% finalizate la această oră · " +
-                            "${slot.nearbyCount} din ${slot.sampleSize} activități $categoryName în jur",
+                    if (slot.fromHistory)
+                        "~${slot.successPercent}% finalizate la această oră · " +
+                                "${slot.nearbyCount} din ${slot.sampleSize} activități $categoryName în jur"
+                    else "Primul interval liber, ținând cont de activități și calendar",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )

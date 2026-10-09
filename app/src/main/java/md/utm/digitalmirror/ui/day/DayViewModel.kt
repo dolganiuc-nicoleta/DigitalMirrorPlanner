@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
@@ -80,6 +81,18 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
     val health: StateFlow<DailyActivity?> =
         _date.flatMapLatest { dailyActivityDao.observeByDate(it) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // evenimentele din calendarul telefonului pentru ziua afișată (doar citire)
+    private val calendarRefresh = MutableStateFlow(0)
+    val calendarEvents: StateFlow<List<CalendarReader.Event>> =
+        combine(_date, calendarRefresh) { date, _ -> date }
+            .mapLatest { CalendarReader.eventsFor(app, LocalDate.parse(it)) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // apelat când ecranul revine în prim-plan: poate s-a schimbat ceva în calendar
+    fun refreshCalendar() {
+        calendarRefresh.value++
+    }
 
     // 3. păstrat pentru compatibilitate cu DayScreen; starea cronometrului vine acum direct din baza de date
     fun refreshRunning() = Unit

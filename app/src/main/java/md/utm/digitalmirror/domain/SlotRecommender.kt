@@ -35,7 +35,8 @@ object SlotRecommender {
         val endMinute: Int,
         val successPercent: Int,     // rata de reușită estimată pentru această oră
         val nearbyCount: Int,        // câte activități din istoric au fost la ±1h de această oră
-        val sampleSize: Int          // câte activități are istoricul în total
+        val sampleSize: Int,         // câte activități are istoricul în total
+        val fromHistory: Boolean = true   // false = doar primul interval liber, fără istoric
     )
 
     fun suggest(
@@ -81,6 +82,27 @@ object SlotRecommender {
             start += STEP_MINUTES
         }
         return best
+    }
+
+    /**
+     * Când nu există încă istoric: primul interval liber din zi în care încape activitatea.
+     * Nu spune nimic despre reușită, doar evită suprapunerile cu activitățile și calendarul.
+     */
+    fun firstFree(
+        durationMinutes: Int,
+        busy: List<Busy>,
+        earliestStart: Int = 7 * 60,
+        latestEnd: Int = 23 * 60
+    ): Suggestion? {
+        val duration = durationMinutes.coerceAtLeast(5)
+        var start = roundUpToStep(earliestStart)
+        while (start + duration <= latestEnd) {
+            if (isFree(start, start + duration, busy)) {
+                return Suggestion(start, start + duration, 0, 0, 0, fromHistory = false)
+            }
+            start += STEP_MINUTES
+        }
+        return null
     }
 
     fun isFree(start: Int, end: Int, busy: List<Busy>): Boolean =

@@ -57,4 +57,20 @@ class SlotRecommenderTest {
         assertTrue(SlotRecommender.isFree(h(11), h(12), busy))    // începe exact când se termină
         assertEquals(false, SlotRecommender.isFree(h(10, 30), h(11, 30), busy))
     }
+
+    @Test
+    fun `fara istoric propune primul interval liber`() {
+        // ocupat 11:30–13:00 și 13:30–15:00; o activitate de 30 min încape la 13:00
+        val busy = listOf(Busy(h(11, 30), h(13)), Busy(h(13, 30), h(15)))
+        val slot = SlotRecommender.firstFree(30, busy, earliestStart = h(12, 46))!!
+        assertEquals(h(13), slot.startMinute)
+        assertEquals(false, slot.fromHistory)
+    }
+
+    @Test
+    fun `fara istoric sare peste golurile prea mici`() {
+        val busy = listOf(Busy(h(11, 30), h(13)), Busy(h(13, 30), h(15)))
+        val slot = SlotRecommender.firstFree(60, busy, earliestStart = h(12, 46))!!
+        assertEquals(h(15), slot.startMinute)
+    }
 }
