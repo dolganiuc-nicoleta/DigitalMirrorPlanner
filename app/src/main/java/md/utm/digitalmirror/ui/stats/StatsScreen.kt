@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import md.utm.digitalmirror.domain.EstimateEvaluation
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,6 +46,11 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                 }
             }
 
+            // precizia estimărilor: întâi, pentru că e ce contează cel mai mult
+            state.evaluation?.let { evaluation ->
+                item { EvaluationCard(evaluation) }
+            }
+
             val total = state.total
             if (total == null) {
                 item { EmptyHint() }
@@ -71,6 +77,85 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                     )
                 }
             }
+        }
+    }
+}
+
+// estimările utilizatorului (M0) față de propunerile aplicației (M3), pe aceleași activități
+@Composable
+private fun EvaluationCard(e: EstimateEvaluation.Result) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Precizia estimărilor", style = MaterialTheme.typography.titleMedium)
+
+            if (!e.enoughData) {
+                Text(
+                    "Încă nu sunt destule activități de comparat (${e.comparedCount} din ${EstimateEvaluation.MIN_RECORDS}).",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    "Se iau în calcul activitățile finalizate cu cronometrul sau cu durata corectată, " +
+                            "la care ai spus cât crezi că durează și ai primit o propunere.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                return@Column
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ErrorTile(
+                    label = "Estimările tale",
+                    value = "±${e.userMae} min",
+                    modifier = Modifier.weight(1f),
+                    highlighted = false
+                )
+                ErrorTile(
+                    label = "Estimările aplicației",
+                    value = "±${e.appMae} min",
+                    modifier = Modifier.weight(1f),
+                    highlighted = (e.appMae ?: 0) < (e.userMae ?: 0)
+                )
+            }
+            Text(
+                "eroare medie față de durata reală · ${activitiesLabel(e.comparedCount)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            val lines = buildList {
+                e.improvementPercent?.let {
+                    add(
+                        if (it > 0) "Propunerile aplicației greșesc cu $it% mai puțin decât estimările tale"
+                        else "Deocamdată estimările tale sunt la fel de bune sau mai bune"
+                    )
+                }
+                e.appCloserPercent?.let { add("Aplicația a fost mai aproape de realitate în $it% din cazuri") }
+                e.coveragePercent?.let {
+                    add("Durata reală a fost în intervalul propus în $it% din cazuri (ținta e 80%)")
+                }
+                e.acceptedPercent?.let {
+                    add("Ai ales propunerea aplicației în $it% din cazurile în care era diferită de estimarea ta")
+                }
+            }
+            lines.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}
+
+@Composable
+private fun ErrorTile(label: String, value: String, modifier: Modifier, highlighted: Boolean) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = if (highlighted) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(label, style = MaterialTheme.typography.bodySmall)
+            Text(value, style = MaterialTheme.typography.headlineSmall)
         }
     }
 }

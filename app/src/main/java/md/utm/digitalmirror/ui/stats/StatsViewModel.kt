@@ -9,6 +9,7 @@ import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.domain.EstimateEvaluation
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
@@ -38,7 +39,8 @@ data class CategoryStat(
 data class StatsUiState(
     val period: StatsPeriod = StatsPeriod.MONTH,
     val total: CategoryStat? = null,               // null = nu există date
-    val categories: List<CategoryStat> = emptyList()
+    val categories: List<CategoryStat> = emptyList(),
+    val evaluation: EstimateEvaluation.Result? = null   // precizia estimărilor: utilizator vs. aplicație
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -69,14 +71,18 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
         activities: List<Activity>,
         categories: List<Category>
     ): StatsUiState {
+        val evaluation = evaluate(activities)
         // luăm doar activitățile finalizate complet, care au și estimare, și durată reală.
         // cele parțiale sau abandonate ar strica comparația.
         val usable = activities.filter {
             it.state == "DONE" &&
                     (it.userEstimatedMinutes ?: 0) > 0 &&
-                    it.actualMinutes != null
+                    it.actualMinutes != null &&
+                    // duratele copiate din plan nu spun nimic despre cât a durat de fapt
+                    it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL)
         }
-        if (usable.isEmpty()) return StatsUiState(period = period)
+
+        if (usable.isEmpty()) return StatsUiState(period = period, evaluation = evaluation)
 
         val names = categories.associate { it.id to it.name }
 
@@ -99,6 +105,26 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
             actualMinutes = perCategory.sumOf { it.actualMinutes }
         )
 
-        return StatsUiState(period = period, total = total, categories = perCategory)
+        return StatsUiState(period = period, total = total, categories = perCategory, evaluation = evaluation)
     }
+
+    // doar activitățile finalizate, cu durata reală din cronometru sau introdusă manual
+    private fun evaluate(activities: List<Activity>): EstimateEvaluation.Result =
+        EstimateEvaluation.evaluate(
+            activities
+                .filter {
+                    it.state == "DONE" && (it.actualMinutes ?: 0) > 0 &&
+                            it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL)
+                }
+                .map {
+                    EstimateEvaluation.Record(
+                        actualMinutes = it.actualMinutes!!,
+                        guessMinutes = it.userGuessMinutes,
+                        estimateMinutes = it.estimatedMinutes,
+                        lowMinutes = it.estimatedLowMinutes,
+                        highMinutes = it.estimatedHighMinutes,
+                        plannedMinutes = it.userEstimatedMinutes
+                    )
+                }
+        )
 }
