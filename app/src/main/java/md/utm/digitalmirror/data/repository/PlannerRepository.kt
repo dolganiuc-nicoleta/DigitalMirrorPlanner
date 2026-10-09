@@ -182,4 +182,6 @@ class PlannerRepository(
             time.hour * 60 + time.minute
         }
 
+    suspend fun activitiesWithTitleKey(key: String) = activityDao.getByTitleKey(key)
+    suspend fun sessionsFor(id: Long) = sessionDao.getForActivity(id)
 }

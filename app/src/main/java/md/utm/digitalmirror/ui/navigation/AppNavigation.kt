@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import md.utm.digitalmirror.ui.activity.ActivityDetailScreen
 import md.utm.digitalmirror.ui.closing.ClosingScreen
 import md.utm.digitalmirror.ui.day.DayScreen
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
@@ -35,8 +36,10 @@ object Routes {
     const val SETTINGS = "settings"
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
+    const val ACTIVITY = "activity/{id}"
 
     fun closing(date: String) = "closing/$date"
+    fun activity(id: Long) = "activity/$id"
 }
 
 // tab-urile din bara de jos
@@ -106,7 +109,10 @@ fun AppNavigation(openClosingToday: Boolean) {
                         navController.navigate(Routes.closing(LocalDate.now().toString()))
                     }
                 }
-                DayScreen(onCloseDay = { date -> navController.navigate(Routes.closing(date)) })
+                DayScreen(
+                    onCloseDay = { date -> navController.navigate(Routes.closing(date)) },
+                    onOpenActivity = { id -> navController.navigate(Routes.activity(id)) }
+                )
             }
 
             composable(Routes.ONBOARDING) {
@@ -131,6 +137,14 @@ fun AppNavigation(openClosingToday: Boolean) {
             ) { entry ->
                 val date = entry.arguments?.getString("date") ?: LocalDate.now().toString()
                 ClosingScreen(date = date, onBack = { navController.popBackStack() })
+            }
+
+            composable(
+                route = Routes.ACTIVITY,
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { entry ->
+                val id = entry.arguments?.getLong("id") ?: return@composable
+                ActivityDetailScreen(activityId = id, onBack = { navController.popBackStack() })
             }
         }
     }

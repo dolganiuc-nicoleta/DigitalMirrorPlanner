@@ -99,7 +99,9 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
         val usable = activities.filter {
             it.state == "DONE" &&
                     (it.userEstimatedMinutes ?: 0) > 0 &&
-                    it.actualMinutes != null
+                    it.actualMinutes != null &&
+                    // duratele copiate din plan nu spun nimic despre cât a durat de fapt
+                    it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL)
         }
         if (usable.isEmpty()) return StatsUiState(period = period, evaluation = evaluation)
 

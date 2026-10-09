@@ -101,4 +101,6 @@ interface ActivityDao {
 
     @Query("SELECT * FROM activity ORDER BY date, id")
     suspend fun getAll(): List<Activity>
+    @Query("SELECT * FROM activity WHERE titleKey = :key ORDER BY date DESC")
+    suspend fun getByTitleKey(key: String): List<Activity>
 }

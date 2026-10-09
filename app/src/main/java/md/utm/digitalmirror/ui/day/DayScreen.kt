@@ -35,7 +35,11 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel()) {
+fun DayScreen(
+    onCloseDay: (String) -> Unit = {},
+    onOpenActivity: (Long) -> Unit = {},
+    vm: DayViewModel = viewModel()
+) {
     val date by vm.date.collectAsState()
     val activities by vm.activities.collectAsState()
     val categories by vm.categories.collectAsState()
@@ -139,6 +143,7 @@ fun DayScreen(onCloseDay: (String) -> Unit = {}, vm: DayViewModel = viewModel())
                         offsetMillis = runningOffset,
                         onToggleTimer = { vm.toggleTimer(activity) },
                         onFinish = { vm.requestFinish(activity) },
+                        onOpen = { onOpenActivity(activity.id) },
                         onEdit = { editing = activity },
                         onPostponeTomorrow = {
                             val tomorrow = LocalDate.parse(activity.date).plusDays(1).toString()
@@ -242,6 +247,7 @@ private fun ActivityRow(
     offsetMillis: Long,
     onToggleTimer: () -> Unit,
     onFinish: () -> Unit,
+    onOpen: () -> Unit,
     onEdit: () -> Unit,
     onPostponeTomorrow: () -> Unit,
     onPostponePick: () -> Unit,
@@ -258,7 +264,8 @@ private fun ActivityRow(
         }
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    // apăsarea pe card deschide pagina activității
+    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 4.dp, bottom = 12.dp)) {
 
             // rândul de sus: textul la stânga, meniul ⋮ la dreapta
