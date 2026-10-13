@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.db.AppDatabase
 import android.net.Uri
+import md.utm.digitalmirror.data.backup.BackupManager
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.export.DataExporter
 import md.utm.digitalmirror.data.health.HealthSync
@@ -110,7 +111,51 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
         onDone(message)
     }
 
-    // 5. ștergerea datelor
+    // 5. copie de rezervă și restaurare
+    private val _restorePreview = MutableStateFlow<BackupManager.Preview?>(null)
+    val restorePreview: StateFlow<BackupManager.Preview?> = _restorePreview
+
+    fun backupFileName() = BackupManager.suggestedFileName()
+
+    fun createBackup(uri: Uri, onDone: (String) -> Unit) = viewModelScope.launch {
+        val message = try {
+            val rows = BackupManager.create(app, uri)
+            "Copie salvată · $rows înregistrări"
+        } catch (e: Exception) {
+            "Copia nu a reușit: ${e.message}"
+        }
+        onDone(message)
+    }
+
+    /** Citește fișierul ales și îl arată utilizatorului; abia după confirmare se restaurează. */
+    fun readBackup(uri: Uri, onError: (String) -> Unit) = viewModelScope.launch {
+        try {
+            _restorePreview.value = BackupManager.read(app, uri)
+        } catch (e: Exception) {
+            onError(e.message ?: "Fișierul nu a putut fi citit.")
+        }
+    }
+
+    fun cancelRestore() {
+        _restorePreview.value = null
+    }
+
+    fun confirmRestore(onDone: (String) -> Unit) = viewModelScope.launch {
+        val preview = _restorePreview.value ?: return@launch
+        _restorePreview.value = null
+        val message = try {
+            BackupManager.restore(app, preview)
+            // setările de reminder s-au schimbat și ele
+            _reminderEnabled.value = ReminderPrefs.isEnabled(app)
+            _reminderMinute.value = ReminderPrefs.minuteOfDay(app)
+            "Datele au fost restaurate"
+        } catch (e: Exception) {
+            "Restaurarea nu a reușit, nu s-a schimbat nimic: ${e.message}"
+        }
+        onDone(message)
+    }
+
+    // 6. ștergerea datelor
     fun deleteAllData(onDone: () -> Unit) = viewModelScope.launch {
         // clearAllTables nu are voie să ruleze pe firul principal
         withContext(Dispatchers.IO) { db.clearAllTables() }

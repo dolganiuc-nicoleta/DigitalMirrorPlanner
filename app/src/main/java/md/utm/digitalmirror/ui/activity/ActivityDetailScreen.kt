@@ -172,6 +172,8 @@ private fun PhoneUsageNote(s: ActivityDetailViewModel.UiState) {
             "Ca să vezi cât folosești telefonul în timpul activității, activează accesul la statistici în Setări → Timp pe telefon."
         s.usage.isEmpty() ->
             "Timpul pe telefon se salvează pentru sesiunile de acum încolo."
+        closedMinutes < 5 ->
+            "Sesiunile sunt prea scurte pentru un procent; după câteva sesiuni mai lungi apare aici."
         closedMinutes > 0 ->
             "În sesiunile salvate ai fost ${formatDuration(phoneMinutes)} pe telefon din ${formatDuration(closedMinutes)} " +
                     "(${(phoneMinutes * 100f / closedMinutes).toInt().coerceIn(0, 100)}%). " +

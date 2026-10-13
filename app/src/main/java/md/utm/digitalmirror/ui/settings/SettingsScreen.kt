@@ -50,6 +50,23 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     }
     var newCategory by remember { mutableStateOf("") }
 
+    // copia de rezervă: utilizatorul alege unde o salvează / ce fișier restaurează
+    val backupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let {
+            vm.createBackup(it) { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+        }
+    }
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            vm.readBackup(it) { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+        }
+    }
+    val restorePreview by vm.restorePreview.collectAsState()
+
     val healthStatus by vm.healthStatus.collectAsState()
     val healthMessage by vm.healthMessage.collectAsState()
 
@@ -261,7 +278,30 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
-            // 6. date
+            // 6. copie de rezervă
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Copie de rezervă")
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Salvează tot într-un fișier și restaurează-l după o reinstalare sau pe alt telefon.")
+                        Hint("Fișierul conține titlurile și reflecțiile tale. Păstrează-l într-un loc sigur, de exemplu în Drive.")
+                        Button(onClick = { backupLauncher.launch(vm.backupFileName()) }) {
+                            Text("Salvează copia")
+                        }
+                        OutlinedButton(onClick = { restoreLauncher.launch(arrayOf("*/*")) }) {
+                            Text("Restaurează din copie")
+                        }
+                    }
+                }
+            }
+
+            // 7. date
             item {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Date")
@@ -280,7 +320,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Include titlurile și textele")
                                 Hint(
-                                    if (exportFull) "Backup complet, pentru tine"
+                                    if (exportFull) "Complet, cu titluri și texte. Nu se poate restaura; pentru asta folosește copia de rezervă"
                                     else "Anonimizat: fără titluri și fără textul reflecțiilor"
                                 )
                             }
@@ -339,6 +379,29 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             },
             dismissButton = {
                 TextButton(onClick = { deleting = null }) { Text("Anulează") }
+            }
+        )
+    }
+
+    restorePreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = { vm.cancelRestore() },
+            title = { Text("Restaurezi această copie?") },
+            text = {
+                Text(
+                    "Copia conține: ${preview.describe()}.\n\n" +
+                            "Datele de acum din aplicație vor fi înlocuite. Acțiunea nu poate fi anulată."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.confirmRestore { message ->
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }) { Text("Înlocuiește", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.cancelRestore() }) { Text("Anulează") }
             }
         )
     }
