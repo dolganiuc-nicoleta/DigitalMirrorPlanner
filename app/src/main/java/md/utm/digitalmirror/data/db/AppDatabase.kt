@@ -20,9 +20,14 @@ import md.utm.digitalmirror.domain.TitleKey
         Category::class,
         Activity::class,
         WorkSession::class,
-        SessionUsage::class
+        SessionUsage::class,
+        AvailabilityRule::class,
+        DayOff::class,
+        Goal::class,
+        GoalCategory::class,
+        GoalStep::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -34,6 +39,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun workSessionDao(): WorkSessionDao
     abstract fun sessionUsageDao(): SessionUsageDao
+    abstract fun availabilityDao(): AvailabilityDao
+    abstract fun goalDao(): GoalDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -113,6 +120,62 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v5 → v6: blocurile fixe (cursuri, masă, somn) și zilele libere
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `availability_rule` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `daysMask` INTEGER NOT NULL,
+                        `startMinute` INTEGER NOT NULL,
+                        `endMinute` INTEGER NOT NULL,
+                        `travelBeforeMinutes` INTEGER NOT NULL,
+                        `travelAfterMinutes` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE TABLE IF NOT EXISTS `day_off` (`date` TEXT NOT NULL, PRIMARY KEY(`date`))")
+            }
+        }
+
+        // v6 → v7: obiective, categoriile lor și etapele
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `goal` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `deadline` TEXT,
+                        `targetMinutes` INTEGER,
+                        `targetActivities` INTEGER,
+                        `startDate` TEXT NOT NULL,
+                        `state` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `note` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `goal_category` (`goalId` INTEGER NOT NULL, " +
+                            "`categoryId` INTEGER NOT NULL, PRIMARY KEY(`goalId`, `categoryId`))"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `goal_step` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `goalId` INTEGER NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `done` INTEGER NOT NULL,
+                        `position` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -120,7 +183,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "digitalmirror.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .build()
                     .also { INSTANCE = it }
             }

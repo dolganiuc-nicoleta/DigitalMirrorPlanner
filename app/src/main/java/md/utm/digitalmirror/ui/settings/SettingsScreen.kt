@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.health.connect.client.PermissionController
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -21,7 +23,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.calendar.CalendarReader
+import md.utm.digitalmirror.data.entity.AvailabilityRule
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.domain.Availability
+import md.utm.digitalmirror.ui.components.DurationField
+import md.utm.digitalmirror.ui.components.formatDuration
 import md.utm.digitalmirror.data.usage.UsageReader
 import md.utm.digitalmirror.data.health.HealthSync
 
@@ -33,6 +39,12 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val reminderEnabled by vm.reminderEnabled.collectAsState()
     val reminderMinute by vm.reminderMinute.collectAsState()
     val categories by vm.categories.collectAsState()
+    val rules by vm.rules.collectAsState()
+    val daysOff by vm.daysOff.collectAsState()
+
+    // null = dialogul e închis; AvailabilityRule cu id 0 = bloc nou
+    var editingRule by remember { mutableStateOf<AvailabilityRule?>(null) }
+    var showDayOffPicker by remember { mutableStateOf(false) }
 
     var showTimePicker by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Category?>(null) }
@@ -224,6 +236,79 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
+            // 3b. programul fix: cursuri, masă, somn, cu drumul inclus
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Program fix")
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (rules.isEmpty()) {
+                            Text("Adaugă orele tale fixe: cursuri, masă, somn.")
+                            Hint("Recomandarea orei le ocolește, inclusiv drumul până la ele și de la ele.")
+                        }
+                        rules.forEach { rule ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(rule.title, fontWeight = FontWeight.Medium)
+                                    Hint(
+                                        "${Availability.daysLabel(rule.daysMask)} · " +
+                                                "${formatClock(rule.startMinute)}–${formatClock(rule.endMinute)}"
+                                    )
+                                    if (rule.travelBeforeMinutes > 0 || rule.travelAfterMinutes > 0) {
+                                        Hint(
+                                            "drum: " + listOfNotNull(
+                                                rule.travelBeforeMinutes.takeIf { it > 0 }?.let { "${formatDuration(it)} înainte" },
+                                                rule.travelAfterMinutes.takeIf { it > 0 }?.let { "${formatDuration(it)} după" }
+                                            ).joinToString(" · ")
+                                        )
+                                    }
+                                }
+                                TextButton(onClick = { editingRule = rule }) { Text("Editează") }
+                                TextButton(onClick = { vm.deleteRule(rule) }) {
+                                    Text("Șterge", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                        OutlinedButton(onClick = {
+                            editingRule = AvailabilityRule(
+                                title = "", daysMask = Availability.WEEKDAYS,
+                                startMinute = 8 * 60, endMinute = 14 * 60,
+                                travelBeforeMinutes = 0, travelAfterMinutes = 0
+                            )
+                        }) { Text("Adaugă un bloc") }
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Zile libere", fontWeight = FontWeight.Medium)
+                        Hint("În zilele libere blocurile fixe nu se aplică, iar ziua nu intră în media zilelor tipice. Poți marca și direct din ecranul zilei.")
+                        val today = java.time.LocalDate.now().toString()
+                        daysOff.filter { it >= today }.forEach { date ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    java.time.LocalDate.parse(date).format(
+                                        java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM yyyy", java.util.Locale.forLanguageTag("ro"))
+                                    ).replaceFirstChar { it.uppercase() },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { vm.removeDayOff(date) }) { Text("Scoate") }
+                            }
+                        }
+                        OutlinedButton(onClick = { showDayOffPicker = true }) { Text("Marchează o zi liberă") }
+                    }
+                }
+            }
+
             // 4. calendarul
             item {
                 Spacer(Modifier.height(4.dp))
@@ -383,6 +468,27 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         )
     }
 
+    editingRule?.let { rule ->
+        RuleDialog(
+            initial = rule,
+            onDismiss = { editingRule = null },
+            onSave = {
+                vm.saveRule(it)
+                editingRule = null
+            }
+        )
+    }
+
+    if (showDayOffPicker) {
+        DayOffDatePicker(
+            onDismiss = { showDayOffPicker = false },
+            onConfirm = {
+                vm.addDayOff(it)
+                showDayOffPicker = false
+            }
+        )
+    }
+
     restorePreview?.let { preview ->
         AlertDialog(
             onDismissRequest = { vm.cancelRestore() },
@@ -466,7 +572,8 @@ private fun RenameDialog(
 private fun ReminderTimeDialog(
     initialMinute: Int,
     onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit
+    onConfirm: (Int) -> Unit,
+    title: String = "Ora reminder-ului"
 ) {
     val state = rememberTimePickerState(
         initialHour = initialMinute / 60,
@@ -476,7 +583,7 @@ private fun ReminderTimeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Ora reminder-ului") },
+        title = { Text(title) },
         text = { TimePicker(state = state) },
         confirmButton = {
             TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("OK") }
@@ -485,6 +592,153 @@ private fun ReminderTimeDialog(
             TextButton(onClick = onDismiss) { Text("Anulează") }
         }
     )
+}
+
+private fun formatClock(minute: Int): String =
+    if (minute >= 24 * 60) "24:00" else "%02d:%02d".format(minute / 60, minute % 60)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun RuleDialog(
+    initial: AvailabilityRule,
+    onDismiss: () -> Unit,
+    onSave: (AvailabilityRule) -> Unit
+) {
+    var title by remember { mutableStateOf(initial.title) }
+    var daysMask by remember { mutableStateOf(initial.daysMask) }
+    var start by remember { mutableStateOf(initial.startMinute) }
+    var end by remember { mutableStateOf(initial.endMinute) }
+    var travelBefore by remember { mutableStateOf(initial.travelBeforeMinutes.takeIf { it > 0 }) }
+    var travelAfter by remember { mutableStateOf(initial.travelAfterMinutes.takeIf { it > 0 }) }
+    var pickingStart by remember { mutableStateOf(false) }
+    var pickingEnd by remember { mutableStateOf(false) }
+
+    val valid = title.isNotBlank() && daysMask != 0 && end > start
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (initial.id == 0L) "Bloc nou" else "Editează blocul") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Denumire (de ex. Cursuri, Masă, Somn)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("În zilele", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (i in 0..6) {
+                        val bit = 1 shl i
+                        FilterChip(
+                            selected = daysMask and bit != 0,
+                            onClick = { daysMask = daysMask xor bit },
+                            label = { Text(Availability.shortDayName(i)) }
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { pickingStart = true }, modifier = Modifier.weight(1f)) {
+                        Text("De la ${formatClock(start)}")
+                    }
+                    OutlinedButton(onClick = { pickingEnd = true }, modifier = Modifier.weight(1f)) {
+                        Text("Până la ${formatClock(end)}")
+                    }
+                }
+                if (end <= start) Hint("Ora de sfârșit trebuie să fie după cea de început.")
+
+                DurationField(
+                    label = "Drum până acolo (opțional)",
+                    minutes = travelBefore,
+                    onChange = { travelBefore = it },
+                    showQuickValues = false
+                )
+                DurationField(
+                    label = "Drum de la ea înapoi (opțional)",
+                    minutes = travelAfter,
+                    onChange = { travelAfter = it },
+                    showQuickValues = false
+                )
+                Hint("Drumul se adaugă la interval: cursuri 08:00–14:00 cu 40 min drum la dus și la întors blochează 07:20–14:40.")
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = valid,
+                onClick = {
+                    onSave(
+                        initial.copy(
+                            title = title.trim(),
+                            daysMask = daysMask,
+                            startMinute = start,
+                            endMinute = end,
+                            travelBeforeMinutes = travelBefore ?: 0,
+                            travelAfterMinutes = travelAfter ?: 0
+                        )
+                    )
+                }
+            ) { Text("Salvează") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anulează") } }
+    )
+
+    if (pickingStart) {
+        ReminderTimeDialog(
+            initialMinute = start,
+            title = "Începe la",
+            onDismiss = { pickingStart = false },
+            onConfirm = { start = it; pickingStart = false }
+        )
+    }
+    if (pickingEnd) {
+        ReminderTimeDialog(
+            initialMinute = end.coerceAtMost(23 * 60 + 59),
+            title = "Se termină la",
+            onDismiss = { pickingEnd = false },
+            onConfirm = { end = it; pickingEnd = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DayOffDatePicker(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    val todayMillis = java.time.LocalDate.now()
+        .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = todayMillis,
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= todayMillis
+        }
+    )
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                enabled = state.selectedDateMillis != null,
+                onClick = {
+                    state.selectedDateMillis?.let { millis ->
+                        val picked = java.time.Instant.ofEpochMilli(millis)
+                            .atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                        onConfirm(picked.toString())
+                    }
+                }
+            ) { Text("Marchează") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anulează") } }
+    ) {
+        DatePicker(state = state)
+    }
 }
 
 @Composable

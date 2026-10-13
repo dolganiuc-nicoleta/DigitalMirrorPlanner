@@ -10,10 +10,12 @@ import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.entity.DayOff
 import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
@@ -32,6 +34,21 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
     }
     private val reflectionDao = AppDatabase.get(app).reflectionDao()
     private val dailyActivityDao = AppDatabase.get(app).dailyActivityDao()
+    private val availabilityDao = AppDatabase.get(app).availabilityDao()
+
+    // zilele libere și blocurile fixe (cursuri, masă, somn) din Setări
+    private val daysOff: Flow<Set<String>> =
+        availabilityDao.observeDaysOff().map { list -> list.map { it.date }.toSet() }
+
+    private val rules: Flow<List<Availability.Rule>> =
+        availabilityDao.observeRules().map { list ->
+            list.map {
+                Availability.Rule(
+                    it.id, it.title, it.daysMask, it.startMinute, it.endMinute,
+                    it.travelBeforeMinutes, it.travelAfterMinutes
+                )
+            }
+        }
 
     // 2. starea
     private val _date = MutableStateFlow(LocalDate.now().toString())
@@ -70,13 +87,29 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
     val dayLoad: StateFlow<DayLoad.Result?> =
         _date.flatMapLatest { date ->
             val history = flow { emit(repo.dailyTotals(date)) }
-            combine(repo.observeActivitiesForDate(date), history) { list, totals ->
+            combine(repo.observeActivitiesForDate(date), history, daysOff) { list, totals, off ->
+                // într-o zi liberă nu avertizăm, iar zilele libere nu intră în media zilelor tipice
+                if (date in off) return@combine null
                 val planned = list
                     .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
                     .sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
-                DayLoad.compute(planned, totals, LocalDate.parse(date))
+                DayLoad.compute(planned, totals.filter { it.date.toString() !in off }, LocalDate.parse(date))
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val isDayOff: StateFlow<Boolean> =
+        combine(_date, daysOff) { date, off -> date in off }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val fixedBlocks: StateFlow<List<Availability.Block>> =
+        combine(_date, rules, daysOff) { date, list, off ->
+            Availability.blocksFor(LocalDate.parse(date), list, off)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun toggleDayOff() = viewModelScope.launch {
+        val date = _date.value
+        if (isDayOff.value) availabilityDao.deleteDayOff(date) else availabilityDao.insertDayOff(DayOff(date))
+    }
 
     val health: StateFlow<DailyActivity?> =
         _date.flatMapLatest { dailyActivityDao.observeByDate(it) }

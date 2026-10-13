@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
@@ -23,6 +24,7 @@ import androidx.navigation.navArgument
 import md.utm.digitalmirror.ui.activity.ActivityDetailScreen
 import md.utm.digitalmirror.ui.closing.ClosingScreen
 import md.utm.digitalmirror.ui.day.DayScreen
+import md.utm.digitalmirror.ui.goals.GoalsScreen
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import md.utm.digitalmirror.ui.onboarding.OnboardingScreen
 import md.utm.digitalmirror.ui.settings.SettingsScreen
@@ -33,6 +35,7 @@ import java.time.LocalDate
 object Routes {
     const val DAY = "day"
     const val STATS = "stats"
+    const val GOALS = "goals"
     const val SETTINGS = "settings"
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
@@ -48,6 +51,7 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val tabs = listOf(
     Tab(Routes.DAY, "Zi", Icons.Filled.Today),
     Tab(Routes.STATS, "Statistici", Icons.Filled.BarChart),
+    Tab(Routes.GOALS, "Obiective", Icons.Filled.Flag),
     Tab(Routes.SETTINGS, "Setări", Icons.Filled.Settings)
 )
 
@@ -125,6 +129,10 @@ fun AppNavigation(openClosingToday: Boolean) {
 
             composable(Routes.STATS) {
                 StatsScreen()
+            }
+
+            composable(Routes.GOALS) {
+                GoalsScreen()
             }
 
             composable(Routes.SETTINGS) {

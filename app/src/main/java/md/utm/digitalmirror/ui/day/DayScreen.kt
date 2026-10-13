@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DailyActivity
+import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.TitleKey
@@ -55,6 +56,8 @@ fun DayScreen(
     val health by vm.health.collectAsState()
     val dayLoad by vm.dayLoad.collectAsState()
     val calendarEvents by vm.calendarEvents.collectAsState()
+    val fixedBlocks by vm.fixedBlocks.collectAsState()
+    val isDayOff by vm.isDayOff.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
@@ -98,6 +101,19 @@ fun DayScreen(
                         TextButton(onClick = { vm.goToToday() }) { Text("Azi") }
                     }
                     TextButton(onClick = { vm.nextDay() }) { Text("→") }
+                    // meniul zilei: marcarea ca zi liberă
+                    Box {
+                        var dayMenuOpen by remember { mutableStateOf(false) }
+                        TextButton(onClick = { dayMenuOpen = true }) {
+                            Text("⋮", style = MaterialTheme.typography.titleMedium)
+                        }
+                        DropdownMenu(expanded = dayMenuOpen, onDismissRequest = { dayMenuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(if (isDayOff) "Scoate marcajul de zi liberă" else "Marchează ca zi liberă") },
+                                onClick = { dayMenuOpen = false; vm.toggleDayOff() }
+                            )
+                        }
+                    }
                 }
             )
         },
@@ -106,7 +122,7 @@ fun DayScreen(
         }
     ) { padding ->
 
-        if (activities.isEmpty() && calendarEvents.isEmpty()) {
+        if (activities.isEmpty() && calendarEvents.isEmpty() && fixedBlocks.isEmpty() && !isDayOff) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -143,6 +159,12 @@ fun DayScreen(
                 health?.let { item { HealthSummary(it) } }
 
                 // evenimentele din calendarul telefonului
+                if (isDayOff) {
+                    item { DayOffCard() }
+                }
+                if (fixedBlocks.isNotEmpty()) {
+                    item { FixedBlocksCard(fixedBlocks) }
+                }
                 if (calendarEvents.isNotEmpty()) {
                     item { CalendarCard(calendarEvents) }
                 }
@@ -211,6 +233,7 @@ fun DayScreen(
             priorRatio = vm.priorRatio,
             loadSlotHistory = { vm.slotHistory(it) },
             calendarEvents = calendarEvents,
+            fixedBlocks = fixedBlocks,
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
@@ -231,6 +254,7 @@ fun DayScreen(
             priorRatio = vm.priorRatio,
             loadSlotHistory = { vm.slotHistory(it) },
             calendarEvents = calendarEvents,
+            fixedBlocks = fixedBlocks,
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
@@ -427,6 +451,69 @@ private fun HealthSummary(data: DailyActivity) {
 
 // cât e planificat azi față de cât reușește utilizatorul de obicei
 @Composable
+private fun DayOffCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Zi liberă", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Blocurile fixe nu se aplică, iar ziua nu intră în media zilelor tale tipice.",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun FixedBlocksCard(blocks: List<Availability.Block>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "Program fix",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            blocks.forEach { b ->
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${formatMinute(b.start)}–${if (b.end >= 24 * 60) "24:00" else formatMinute(b.end)}",
+                            modifier = Modifier.width(100.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            b.title,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    // drumul, doar dacă există
+                    if (b.travelBefore > 0 || b.travelAfter > 0) {
+                        Text(
+                            "drum: " + listOfNotNull(
+                                b.travelBefore.takeIf { it > 0 }?.let { "${formatDuration(it)} înainte" },
+                                b.travelAfter.takeIf { it > 0 }?.let { "${formatDuration(it)} după" }
+                            ).joinToString(" · "),
+                            modifier = Modifier.padding(start = 100.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun CalendarCard(events: List<CalendarReader.Event>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -621,6 +708,7 @@ private fun ActivityDialog(
     priorRatio: Double,
     loadSlotHistory: suspend (Long) -> List<SlotRecommender.Outcome>,
     calendarEvents: List<CalendarReader.Event>,
+    fixedBlocks: List<Availability.Block>,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
     onConfirm: (ActivityFormResult) -> Unit
@@ -680,7 +768,9 @@ private fun ActivityDialog(
                 a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) }
             } +
                 // orele ocupate din calendar (fără cele de toată ziua și cele marcate „liber”)
-                calendarEvents.filter { it.busy }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) }
+                calendarEvents.filter { it.busy }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) } +
+                // blocurile fixe, cu drumul dus și întors inclus
+                fixedBlocks.map { SlotRecommender.Busy(it.busyStart, it.busyEnd) }
 
         val earliest = if (day == today) {
             val now = LocalTime.now()

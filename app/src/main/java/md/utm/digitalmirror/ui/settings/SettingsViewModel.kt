@@ -10,7 +10,9 @@ import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.db.AppDatabase
 import android.net.Uri
 import md.utm.digitalmirror.data.backup.BackupManager
+import md.utm.digitalmirror.data.entity.AvailabilityRule
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.entity.DayOff
 import md.utm.digitalmirror.data.export.DataExporter
 import md.utm.digitalmirror.data.health.HealthSync
 import md.utm.digitalmirror.data.repository.PlannerRepository
@@ -110,6 +112,29 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
         }
         onDone(message)
     }
+
+    // 4b. blocuri fixe (cursuri, masă, somn) și zile libere
+    private val availabilityDao = db.availabilityDao()
+
+    val rules: StateFlow<List<AvailabilityRule>> =
+        availabilityDao.observeRules()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val daysOff: StateFlow<List<String>> =
+        availabilityDao.observeDaysOff()
+            .map { list -> list.map { it.date } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Adaugă un bloc nou (id = 0) sau îl actualizează pe cel existent. */
+    fun saveRule(rule: AvailabilityRule) = viewModelScope.launch {
+        if (rule.id == 0L) availabilityDao.insertRule(rule) else availabilityDao.updateRule(rule)
+    }
+
+    fun deleteRule(rule: AvailabilityRule) = viewModelScope.launch { availabilityDao.deleteRule(rule) }
+
+    fun addDayOff(date: String) = viewModelScope.launch { availabilityDao.insertDayOff(DayOff(date)) }
+
+    fun removeDayOff(date: String) = viewModelScope.launch { availabilityDao.deleteDayOff(date) }
 
     // 5. copie de rezervă și restaurare
     private val _restorePreview = MutableStateFlow<BackupManager.Preview?>(null)
