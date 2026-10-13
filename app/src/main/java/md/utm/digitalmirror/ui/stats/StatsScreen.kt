@@ -7,16 +7,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.domain.EstimateEvaluation
 import md.utm.digitalmirror.domain.ProductivityMap
 import kotlin.math.abs
@@ -26,6 +29,8 @@ import kotlin.math.abs
 fun StatsScreen(onOpenReport: () -> Unit = {}, vm: StatsViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val productivity by vm.productivity.collectAsState()
+    val context = LocalContext.current
+    val analysisOn = remember { AnalysisPrefs.isEnabled(context) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Statistici") }) }
@@ -56,12 +61,12 @@ fun StatsScreen(onOpenReport: () -> Unit = {}, vm: StatsViewModel = viewModel())
             }
 
             // precizia estimărilor: întâi, pentru că e ce contează cel mai mult
-            state.evaluation?.let { evaluation ->
+            state.evaluation?.takeIf { analysisOn }?.let { evaluation ->
                 item { EvaluationCard(evaluation) }
             }
 
             // harta orelor productive
-            productivity?.takeIf { it.total > 0 }?.let { map ->
+            productivity?.takeIf { analysisOn && it.total > 0 }?.let { map ->
                 item { ProductivityCard(map) }
             }
 

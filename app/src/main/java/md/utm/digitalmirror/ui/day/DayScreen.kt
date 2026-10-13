@@ -1,5 +1,6 @@
 package md.utm.digitalmirror.ui.day
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,8 +9,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -22,11 +25,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DailyActivity
+import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
+import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.ui.components.DurationField
 import md.utm.digitalmirror.ui.components.formatDuration
 import kotlin.math.abs
@@ -58,6 +63,15 @@ fun DayScreen(
     val calendarEvents by vm.calendarEvents.collectAsState()
     val fixedBlocks by vm.fixedBlocks.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
+
+    // comutatorul din Setări; se recitește de fiecare dată când ecranul reintră în compoziție
+    val context = LocalContext.current
+    val analysisOn = remember { AnalysisPrefs.isEnabled(context) }
+
+    // filtrarea după etichetă; arătăm doar etichetele care apar în ziua aleasă
+    val dayTags = activities.flatMap { Tags.decode(it.tags) }.distinct().sorted()
+    var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    val activeTag = tagFilter?.takeIf { it in dayTags }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
@@ -170,13 +184,38 @@ fun DayScreen(
                 }
 
                 // încărcarea zilei, doar pentru azi și zilele viitoare
-                dayLoad?.takeIf { date >= LocalDate.now().toString() && it.plannedMinutes > 0 }?.let { load ->
+                dayLoad?.takeIf { analysisOn && date >= LocalDate.now().toString() && it.plannedMinutes > 0 }?.let { load ->
                     item { DayLoadCard(load) }
+                }
+
+                // filtrarea după etichete
+                if (dayTags.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = activeTag == null,
+                                onClick = { tagFilter = null },
+                                label = { Text("Toate") }
+                            )
+                            dayTags.forEach { tag ->
+                                FilterChip(
+                                    selected = activeTag == tag,
+                                    onClick = { tagFilter = if (activeTag == tag) null else tag },
+                                    label = { Text("#$tag") }
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // sortate după ora de start, cele fără oră la final
                 items(
-                    activities.sortedWith(compareBy(nullsLast()) { it.plannedStartMinute }),
+                    activities
+                        .filter { activeTag == null || activeTag in Tags.decode(it.tags) }
+                        .sortedWith(compareBy(nullsLast()) { it.plannedStartMinute }),
                     key = { it.id }
                 ) { activity ->
                     ActivityRow(
@@ -234,10 +273,14 @@ fun DayScreen(
             loadSlotHistory = { vm.slotHistory(it) },
             calendarEvents = calendarEvents,
             fixedBlocks = fixedBlocks,
+            analysisOn = analysisOn,
             onDismiss = { showAddDialog = false },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
-                vm.addActivity(r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.guessMinutes, r.estimate)
+                vm.addActivity(
+                    r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.guessMinutes, r.estimate,
+                    r.note, r.tags
+                )
                 showAddDialog = false
             }
         )
@@ -255,10 +298,11 @@ fun DayScreen(
             loadSlotHistory = { vm.slotHistory(it) },
             calendarEvents = calendarEvents,
             fixedBlocks = fixedBlocks,
+            analysisOn = analysisOn,
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
-                vm.editActivity(activity.id, r.title, r.categoryId, r.plannedMinutes, r.startMinute)
+                vm.editActivity(activity.id, r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.note, r.tags)
                 editing = null
             }
         )
@@ -341,6 +385,23 @@ private fun ActivityRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    Tags.decode(activity.tags).takeIf { it.isNotEmpty() }?.let { tags ->
+                        Text(
+                            tags.joinToString(" ") { "#$it" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    if (activity.note.isNotBlank()) {
+                        Text(
+                            activity.note,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
                     if (isRunning) {
                         val h = elapsed / 3600
@@ -687,7 +748,9 @@ private data class ActivityFormResult(
     val plannedMinutes: Int?,
     val startMinute: Int?,
     val guessMinutes: Int?,                    // doar la adăugare
-    val estimate: HistoryEstimator.Estimate?   // doar la adăugare
+    val estimate: HistoryEstimator.Estimate?,  // doar la adăugare
+    val note: String,
+    val tags: String                           // deja în forma salvată (fără #, separate prin virgulă)
 )
 
 /**
@@ -709,6 +772,7 @@ private fun ActivityDialog(
     loadSlotHistory: suspend (Long) -> List<SlotRecommender.Outcome>,
     calendarEvents: List<CalendarReader.Event>,
     fixedBlocks: List<Availability.Block>,
+    analysisOn: Boolean,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
     onConfirm: (ActivityFormResult) -> Unit
@@ -723,10 +787,13 @@ private fun ActivityDialog(
     var expanded by remember { mutableStateOf(false) }
     var startMinute by remember { mutableStateOf(initial?.plannedStartMinute) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var tagsInput by remember { mutableStateOf(initial?.let { Tags.toInput(it.tags) } ?: "") }
+    var note by remember { mutableStateOf(initial?.note ?: "") }
 
     // pasul 1: ghicitul utilizatorului
     var guessInput by remember { mutableStateOf<Int?>(null) }
-    var revealed by remember { mutableStateOf(isEdit) }   // la editare nu mai cerem ghicitul
+    // la editare, sau cu analiza oprită, nu mai cerem ghicitul
+    var revealed by remember { mutableStateOf(isEdit || !analysisOn) }
     var guessMinutes by remember { mutableStateOf<Int?>(null) }
 
     // pasul 2: durata planificată finală
@@ -740,7 +807,7 @@ private fun ActivityDialog(
     // propunerea se recalculează când se schimbă titlul sau categoria
     val titleKey = TitleKey.of(title)
     val estimate = remember(history, titleKey, selectedCategory?.id, guessMinutes, revealed) {
-        if (!revealed || isEdit) null
+        if (!analysisOn || !revealed || isEdit) null
         else HistoryEstimator.estimate(history, titleKey, selectedCategory?.id, guessMinutes, priorRatio)
     }
 
@@ -760,7 +827,7 @@ private fun ActivityDialog(
     val slotSuggestion = run {
         val day = LocalDate.parse(date)
         val today = LocalDate.now()
-        if (!revealed || startMinute != null || day.isBefore(today)) return@run null
+        if (!analysisOn || !revealed || startMinute != null || day.isBefore(today)) return@run null
 
         val busy = dayActivities
             .filter { it.id != initial?.id && it.state != "ABANDONED" && it.state != "POSTPONED" }
@@ -931,6 +998,19 @@ private fun ActivityDialog(
                             TextButton(onClick = { startMinute = null }) { Text("Fără oră") }
                         }
                     }
+
+                    OutlinedTextField(
+                        value = tagsInput,
+                        onValueChange = { tagsInput = it },
+                        label = { Text("Etichete (opțional, de ex. #curs #urgent)") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it },
+                        label = { Text("Notiță (opțional)") },
+                        minLines = 2
+                    )
                 }
             }
         },
@@ -945,7 +1025,9 @@ private fun ActivityDialog(
                                 plannedMinutes = plannedMinutes,
                                 startMinute = startMinute,
                                 guessMinutes = guessMinutes,
-                                estimate = estimate
+                                estimate = estimate,
+                                note = note,
+                                tags = Tags.encode(Tags.parse(tagsInput))
                             )
                         )
                     },

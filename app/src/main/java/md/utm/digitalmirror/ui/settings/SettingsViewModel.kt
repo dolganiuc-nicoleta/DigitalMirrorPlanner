@@ -15,6 +15,7 @@ import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DayOff
 import md.utm.digitalmirror.data.export.DataExporter
 import md.utm.digitalmirror.data.health.HealthSync
+import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.reminder.ReminderPrefs
 import md.utm.digitalmirror.reminder.ReminderScheduler
@@ -111,6 +112,27 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
             "Exportul nu a reușit: ${e.message}"
         }
         onDone(message)
+    }
+
+    fun csvFileName(full: Boolean) = DataExporter.suggestedCsvName(app, full)
+
+    fun exportCsv(uri: Uri, full: Boolean, onDone: (String) -> Unit) = viewModelScope.launch {
+        val message = try {
+            val count = DataExporter.exportCsv(app, uri, full)
+            "Export CSV gata · $count activități"
+        } catch (e: Exception) {
+            "Exportul nu a reușit: ${e.message}"
+        }
+        onDone(message)
+    }
+
+    // 4a. analiza și recomandările
+    private val _analysisEnabled = MutableStateFlow(AnalysisPrefs.isEnabled(app))
+    val analysisEnabled: StateFlow<Boolean> = _analysisEnabled
+
+    fun setAnalysisEnabled(enabled: Boolean) {
+        AnalysisPrefs.setEnabled(app, enabled)
+        _analysisEnabled.value = enabled
     }
 
     // 4b. blocuri fixe (cursuri, masă, somn) și zile libere

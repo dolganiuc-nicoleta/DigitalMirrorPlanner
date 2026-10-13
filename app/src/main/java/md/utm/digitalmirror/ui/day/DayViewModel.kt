@@ -164,7 +164,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         plannedMinutes: Int?,
         startMinute: Int?,
         guessMinutes: Int?,
-        estimate: HistoryEstimator.Estimate?
+        estimate: HistoryEstimator.Estimate?,
+        note: String = "",
+        tags: String = ""
     ) = viewModelScope.launch {
         if (title.isBlank()) return@launch
         val activity = Activity(
@@ -177,7 +179,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             estimatedLowMinutes = estimate?.lowMinutes,
             estimatedHighMinutes = estimate?.highMinutes,
             userEstimatedMinutes = plannedMinutes,
-            actualMinutes = null
+            actualMinutes = null,
+            note = note.trim(),
+            tags = tags
         )
         val id = repo.addActivity(activity)
         ActivityReminders.onActivityPlanned(app, activity.copy(id = id))
@@ -189,7 +193,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         title: String,
         categoryId: Long?,
         plannedMinutes: Int?,
-        startMinute: Int?
+        startMinute: Int?,
+        note: String = "",
+        tags: String = ""
     ) = viewModelScope.launch {
         if (title.isBlank()) return@launch
         // citim varianta proaspătă din baza de date, ca să nu pierdem timpul cronometrat între timp
@@ -198,7 +204,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             title = title.trim(),
             categoryId = categoryId,
             userEstimatedMinutes = plannedMinutes,
-            plannedStartMinute = startMinute
+            plannedStartMinute = startMinute,
+            note = note.trim(),
+            tags = tags
         )
         repo.updateActivity(updated)
         ActivityReminders.onActivityPlanned(app, updated)

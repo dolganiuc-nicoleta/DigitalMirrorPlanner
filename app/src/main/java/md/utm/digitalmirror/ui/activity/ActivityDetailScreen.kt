@@ -7,11 +7,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
+import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.domain.ActivityInsight
 import md.utm.digitalmirror.ui.components.formatDuration
 import java.time.Instant
@@ -34,6 +36,8 @@ fun ActivityDetailScreen(
 ) {
     LaunchedEffect(activityId) { vm.load(activityId) }
     val state by vm.state.collectAsState()
+    val context = LocalContext.current
+    val analysisOn = remember { AnalysisPrefs.isEnabled(context) }
 
     Scaffold(
         topBar = {
@@ -98,7 +102,9 @@ fun ActivityDetailScreen(
             }
 
             // 4. observația, din istoricul aceleiași activități
-            item { InsightCard(s.activity.title, s.insight, s.history.size) }
+            if (analysisOn) {
+                item { InsightCard(s.activity.title, s.insight, s.history.size) }
+            }
 
             // 5. istoricul
             if (s.history.isNotEmpty()) {

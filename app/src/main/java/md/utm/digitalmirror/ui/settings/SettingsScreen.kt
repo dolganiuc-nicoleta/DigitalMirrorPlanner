@@ -60,6 +60,14 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
             vm.export(it, exportFull) { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
         }
     }
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        uri?.let {
+            vm.exportCsv(it, exportFull) { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+        }
+    }
+    val analysisEnabled by vm.analysisEnabled.collectAsState()
     var newCategory by remember { mutableStateOf("") }
 
     // copia de rezervă: utilizatorul alege unde o salvează / ce fișier restaurează
@@ -386,6 +394,34 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
+            // 6b. analiza și recomandările
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Analiză și recomandări")
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Propuneri și observații")
+                                Hint(
+                                    if (analysisEnabled)
+                                        "Aplicația propune durate și ore, avertizează la supraîncărcare și arată observații din istoricul tău."
+                                    else
+                                        "Oprit: nu mai primești propuneri, avertizări sau observații. Activitățile se salvează în continuare, " +
+                                                "ca la repornire să existe istoric."
+                                )
+                            }
+                            Switch(checked = analysisEnabled, onCheckedChange = { vm.setAnalysisEnabled(it) })
+                        }
+                    }
+                }
+            }
+
             // 7. date
             item {
                 Spacer(Modifier.height(4.dp))
@@ -414,6 +450,10 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                         Button(onClick = { exportLauncher.launch(vm.exportFileName(exportFull)) }) {
                             Text("Exportă datele (JSON)")
                         }
+                        OutlinedButton(onClick = { csvLauncher.launch(vm.csvFileName(exportFull)) }) {
+                            Text("Exportă datele (CSV)")
+                        }
+                        Hint("CSV: un rând pe activitate, separat prin „;”, ca să se deschidă direct în Excel.")
 
                         Spacer(Modifier.height(4.dp))
                         OutlinedButton(

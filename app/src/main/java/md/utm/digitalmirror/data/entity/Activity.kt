@@ -37,7 +37,9 @@ data class Activity(
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0")
     val postponedCount: Int = 0,
-    val titleKey: String? = null         // v4 · titlul normalizat, pentru a găsi activitățile „la fel”
+    val titleKey: String? = null,        // v4 · titlul normalizat, pentru a găsi activitățile „la fel”
+    @ColumnInfo(defaultValue = "''")
+    val tags: String = ""                // v9 · etichete separate prin virgulă, fără #
 ) {
     companion object {
         // sursele durate reale; estimatorul învață doar din cele sigure
