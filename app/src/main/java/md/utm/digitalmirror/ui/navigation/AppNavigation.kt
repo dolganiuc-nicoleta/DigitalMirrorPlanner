@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
@@ -22,6 +23,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import md.utm.digitalmirror.ui.activity.ActivityDetailScreen
+import md.utm.digitalmirror.ui.capsule.CapsuleScreen
 import md.utm.digitalmirror.ui.closing.ClosingScreen
 import md.utm.digitalmirror.ui.day.DayScreen
 import md.utm.digitalmirror.ui.goals.GoalsScreen
@@ -36,6 +38,7 @@ object Routes {
     const val DAY = "day"
     const val STATS = "stats"
     const val GOALS = "goals"
+    const val CAPSULE = "capsule"
     const val SETTINGS = "settings"
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
@@ -52,11 +55,12 @@ private val tabs = listOf(
     Tab(Routes.DAY, "Zi", Icons.Filled.Today),
     Tab(Routes.STATS, "Statistici", Icons.Filled.BarChart),
     Tab(Routes.GOALS, "Obiective", Icons.Filled.Flag),
+    Tab(Routes.CAPSULE, "Capsulă", Icons.Filled.Email),
     Tab(Routes.SETTINGS, "Setări", Icons.Filled.Settings)
 )
 
 @Composable
-fun AppNavigation(openClosingToday: Boolean) {
+fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
     val navController = rememberNavController()
     val context = LocalContext.current
     // prima pornire: configurarea inițială; după aceea direct ecranul zilei
@@ -71,6 +75,7 @@ fun AppNavigation(openClosingToday: Boolean) {
 
     // ca notificarea să deschidă Închiderea zilei o singură dată
     var notificationHandled by rememberSaveable { mutableStateOf(false) }
+    var capsuleHandled by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         bottomBar = {
@@ -135,6 +140,10 @@ fun AppNavigation(openClosingToday: Boolean) {
                 GoalsScreen()
             }
 
+            composable(Routes.CAPSULE) {
+                CapsuleScreen()
+            }
+
             composable(Routes.SETTINGS) {
                 SettingsScreen()
             }
@@ -153,6 +162,14 @@ fun AppNavigation(openClosingToday: Boolean) {
             ) { entry ->
                 val id = entry.arguments?.getLong("id") ?: return@composable
                 ActivityDetailScreen(activityId = id, onBack = { navController.popBackStack() })
+            }
+        }
+
+        // deschis din notificarea capsulei → mergem direct la tabul Capsulă, o singură dată
+        LaunchedEffect(openCapsule) {
+            if (openCapsule && !capsuleHandled && startDestination != Routes.ONBOARDING) {
+                capsuleHandled = true
+                navController.navigate(Routes.CAPSULE)
             }
         }
     }

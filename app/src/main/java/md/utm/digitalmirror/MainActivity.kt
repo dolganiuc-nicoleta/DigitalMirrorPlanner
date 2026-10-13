@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.health.HealthSync
 import md.utm.digitalmirror.data.usage.UsageCollector
 import md.utm.digitalmirror.reminder.ActivityReminders
+import md.utm.digitalmirror.reminder.CapsuleReminders
 import md.utm.digitalmirror.reminder.ReminderNotifications
 import md.utm.digitalmirror.reminder.ReminderScheduler
 import md.utm.digitalmirror.ui.navigation.AppNavigation
@@ -28,6 +29,8 @@ class MainActivity : ComponentActivity() {
         ReminderNotifications.createChannel(this)
         ReminderScheduler.schedule(this)
         ActivityReminders.createChannels(this)
+        CapsuleReminders.createChannel(this)
+        CapsuleReminders.schedule(this)
 
         // alarmele activităților se pierd la repornirea telefonului, așa că le refacem la fiecare pornire
         lifecycleScope.launch { ActivityReminders.rescheduleAll(applicationContext) }
@@ -35,9 +38,12 @@ class MainActivity : ComponentActivity() {
         // true dacă aplicația a fost deschisă din notificare
         val openClosing = intent.getBooleanExtra(ReminderNotifications.EXTRA_OPEN_CLOSING, false)
 
+        // true dacă aplicația a fost deschisă din notificarea capsulei
+        val openCapsule = intent.getBooleanExtra(CapsuleReminders.EXTRA_OPEN_CAPSULE, false)
+
         setContent {
             DigitalMirrorPlannerTheme {
-                AppNavigation(openClosingToday = openClosing)
+                AppNavigation(openClosingToday = openClosing, openCapsule = openCapsule)
             }
         }
     }

@@ -49,7 +49,9 @@ object BackupManager {
                 "work_session" to "sesiuni de cronometru",
                 "reflection" to "reflecții",
                 "daily_activity" to "zile cu pași și somn",
-                "session_usage" to "sesiuni cu timp pe telefon"
+                "session_usage" to "sesiuni cu timp pe telefon",
+                "goal" to "obiective",
+                "time_capsule" to "capsule"
             )
             val lower = counts.mapKeys { it.key.lowercase() }
             return names
@@ -108,9 +110,11 @@ object BackupManager {
 
         val current = AppDatabase.get(context).openHelper.readableDatabase.version
         val backupVersion = root.optInt("dbVersion", -1)
-        if (backupVersion != current) {
+        // o copie mai veche se poate restaura (tabelele sau coloanele noi rămân goale sau implicite);
+        // una mai nouă nu, pentru că aplicația nu știe ce conține
+        if (backupVersion < 1 || backupVersion > current) {
             throw BackupException(
-                "Copia e din altă versiune a aplicației (baza de date $backupVersion, acum $current)."
+                "Copia e dintr-o versiune mai nouă a aplicației (baza de date $backupVersion, acum $current). Actualizează aplicația."
             )
         }
 

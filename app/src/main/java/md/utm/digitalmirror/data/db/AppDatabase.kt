@@ -25,9 +25,11 @@ import md.utm.digitalmirror.domain.TitleKey
         DayOff::class,
         Goal::class,
         GoalCategory::class,
-        GoalStep::class
+        GoalStep::class,
+        TimeCapsule::class,
+        CapsuleGoal::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sessionUsageDao(): SessionUsageDao
     abstract fun availabilityDao(): AvailabilityDao
     abstract fun goalDao(): GoalDao
+    abstract fun capsuleDao(): CapsuleDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -176,6 +179,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v7 → v8: capsulele timpului și obiectivele legate de ele
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `time_capsule` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `message` TEXT NOT NULL,
+                        `expectations` TEXT NOT NULL,
+                        `startDate` TEXT NOT NULL,
+                        `unlockDate` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `openedAt` INTEGER,
+                        `videoFile` TEXT,
+                        `openWhenSlowing` INTEGER NOT NULL,
+                        `lastNudgeDate` TEXT,
+                        `readyNotified` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `capsule_goal` (`capsuleId` INTEGER NOT NULL, " +
+                            "`goalId` INTEGER NOT NULL, `percentAtStart` INTEGER NOT NULL, " +
+                            "PRIMARY KEY(`capsuleId`, `goalId`))"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -183,7 +215,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "digitalmirror.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .build()
                     .also { INSTANCE = it }
             }
