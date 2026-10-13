@@ -29,6 +29,7 @@ import md.utm.digitalmirror.ui.day.DayScreen
 import md.utm.digitalmirror.ui.goals.GoalsScreen
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import md.utm.digitalmirror.ui.onboarding.OnboardingScreen
+import md.utm.digitalmirror.ui.report.ReportScreen
 import md.utm.digitalmirror.ui.settings.SettingsScreen
 import md.utm.digitalmirror.ui.stats.StatsScreen
 import java.time.LocalDate
@@ -39,6 +40,7 @@ object Routes {
     const val STATS = "stats"
     const val GOALS = "goals"
     const val CAPSULE = "capsule"
+    const val REPORT = "report"
     const val SETTINGS = "settings"
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
@@ -133,7 +135,11 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
             }
 
             composable(Routes.STATS) {
-                StatsScreen()
+                StatsScreen(onOpenReport = { navController.navigate(Routes.REPORT) })
+            }
+
+            composable(Routes.REPORT) {
+                ReportScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.GOALS) {

@@ -23,7 +23,7 @@ import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatsScreen(vm: StatsViewModel = viewModel()) {
+fun StatsScreen(onOpenReport: () -> Unit = {}, vm: StatsViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val productivity by vm.productivity.collectAsState()
 
@@ -45,6 +45,13 @@ fun StatsScreen(vm: StatsViewModel = viewModel()) {
                             label = { Text(period.label) }
                         )
                     }
+                }
+            }
+
+            // raportul săptămânal, evoluția și comparația între perioade
+            item {
+                OutlinedButton(onClick = onOpenReport, modifier = Modifier.fillMaxWidth()) {
+                    Text("Raport săptămânal și evoluție")
                 }
             }
 
