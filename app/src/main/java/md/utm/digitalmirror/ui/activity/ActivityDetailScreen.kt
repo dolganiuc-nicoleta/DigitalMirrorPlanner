@@ -76,12 +76,25 @@ fun ActivityDetailScreen(
                 item { SectionTitle("Sesiuni de cronometru") }
                 items(s.sessions) { session ->
                     val end = session.endedAt
-                    Text(
-                        "${formatTime(session.startedAt)} – ${end?.let { formatTime(it) } ?: "în desfășurare"}" +
-                                (end?.let { " · ${formatDuration(((it - session.startedAt) / 60_000).toInt())}" } ?: ""),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Column {
+                        Text(
+                            "${formatTime(session.startedAt)} – ${end?.let { formatTime(it) } ?: "în desfășurare"}" +
+                                    (end?.let { " · ${formatDuration(((it - session.startedAt) / 60_000).toInt())}" } ?: ""),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        // timpul pe telefon din sesiune, dacă a fost salvat
+                        s.usage[session.startedAt]?.let { u ->
+                            Text(
+                                if (u.minutes == 0) "sub un minut pe telefon"
+                                else "${formatDuration(u.minutes)} pe telefon" +
+                                        (if (u.apps.isNotEmpty()) " · " + u.apps.take(3).joinToString(", ") { "${it.first} ${it.second} min" } else ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
+                item { PhoneUsageNote(s) }
             }
 
             // 4. observația, din istoricul aceleiași activități
@@ -105,16 +118,9 @@ private fun ThisTimeCard(a: Activity, sessionCount: Int) {
 
             a.userGuessMinutes?.let { Row2("Ai estimat", formatDuration(it)) }
             a.estimatedMinutes?.let { est ->
-                Row2("Aplicația a propus", "~${formatDuration(est)}")
-                if (a.estimatedLowMinutes != null && a.estimatedHighMinutes != null) {
-                    Text(
-                        "interval probabil: ${formatDuration(a.estimatedLowMinutes)} – ${formatDuration(a.estimatedHighMinutes)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.End
-                    )
-                }
+                val range = if (a.estimatedLowMinutes != null && a.estimatedHighMinutes != null)
+                    " (${formatDuration(a.estimatedLowMinutes)} – ${formatDuration(a.estimatedHighMinutes)})" else ""
+                Row2("Aplicația a propus", "~${formatDuration(est)}$range")
             }
             a.userEstimatedMinutes?.let { Row2("Planificat", formatDuration(it)) }
             a.actualMinutes?.let { actual ->
@@ -152,6 +158,27 @@ private fun ThisTimeCard(a: Activity, sessionCount: Int) {
             }
         }
     }
+}
+
+@Composable
+private fun PhoneUsageNote(s: ActivityDetailViewModel.UiState) {
+    val closedMinutes = s.sessions
+        .filter { it.endedAt != null && s.usage.containsKey(it.startedAt) }
+        .sumOf { ((it.endedAt!! - it.startedAt) / 60_000).toInt() }
+    val phoneMinutes = s.usage.values.sumOf { it.minutes }
+
+    val text = when {
+        !s.usageEnabled && s.usage.isEmpty() ->
+            "Ca să vezi cât folosești telefonul în timpul activității, activează accesul la statistici în Setări → Timp pe telefon."
+        s.usage.isEmpty() ->
+            "Timpul pe telefon se salvează pentru sesiunile de acum încolo."
+        closedMinutes > 0 ->
+            "În sesiunile salvate ai fost ${formatDuration(phoneMinutes)} pe telefon din ${formatDuration(closedMinutes)} " +
+                    "(${(phoneMinutes * 100f / closedMinutes).toInt().coerceIn(0, 100)}%). " +
+                    "Include și aplicațiile de care ai nevoie pentru activitate, nu doar distragerile."
+        else -> null
+    }
+    text?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
 
 @Composable

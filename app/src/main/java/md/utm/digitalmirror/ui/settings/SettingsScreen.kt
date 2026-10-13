@@ -14,11 +14,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.usage.UsageReader
 import md.utm.digitalmirror.data.health.HealthSync
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,6 +67,17 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         calendarConnected = granted
         calendarDenied = !granted
     }
+    // accesul la statistici de utilizare se dă din setările telefonului, deci recitim starea la revenire
+    var usageConnected by remember { mutableStateOf(UsageReader.hasPermission(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) usageConnected = UsageReader.hasPermission(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val openAppSettings = {
         context.startActivity(
             Intent(
@@ -222,7 +237,31 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
             }
 
-            // 5. date
+            // 5. timpul pe telefon
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Timp pe telefon")
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (usageConnected) {
+                            Text("✓ Accesul la statistici este activ")
+                            Hint("Pentru fiecare sesiune de cronometru se salvează câte minute ai folosit telefonul și primele 5 aplicații. Nu se salvează conținut.")
+                            OutlinedButton(onClick = { UsageReader.openSettings(context) }) { Text("Gestionează accesul") }
+                        } else {
+                            Text("Vezi cât ai folosit telefonul în timpul unei activități")
+                            Hint("Android cere ca accesul să fie activat manual, o singură dată: cauți „Digital Mirror” în listă și îl permiți. Datele rămân pe telefon.")
+                            Button(onClick = { UsageReader.openSettings(context) }) { Text("Deschide setările") }
+                        }
+                    }
+                }
+            }
+
+            // 6. date
             item {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Date")

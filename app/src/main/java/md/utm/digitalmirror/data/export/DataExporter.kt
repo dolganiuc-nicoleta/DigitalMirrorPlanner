@@ -26,7 +26,7 @@ import java.time.LocalDate
  */
 object DataExporter {
 
-    const val SCHEMA_VERSION = 1
+    const val SCHEMA_VERSION = 2
 
     private const val PREFS = "study_prefs"
     private const val KEY_PARTICIPANT = "participant_id"
@@ -59,6 +59,7 @@ object DataExporter {
         val db = AppDatabase.get(context)
         val activities = db.activityDao().getAll()
         val sessions = db.workSessionDao().getAll().groupBy { it.activityId }
+        val usage = db.sessionUsageDao().getAll().associateBy { it.startedAt }
         val categories = db.categoryDao().observeAll().first()
         val daily = db.dailyActivityDao().observeAll().first().sortedBy { it.date }
         val reflections = db.reflectionDao().observeAll().first().sortedBy { it.date }
@@ -102,9 +103,16 @@ object DataExporter {
                     .put("createdAt", a.createdAt)
                     .put("sessions", JSONArray().apply {
                         sessions[a.id].orEmpty().forEach { s ->
+                            val u = usage[s.startedAt]
                             put(JSONObject()
                                 .put("startedAt", s.startedAt)
-                                .put("endedAt", s.endedAt ?: JSONObject.NULL))
+                                .put("endedAt", s.endedAt ?: JSONObject.NULL)
+                                // minute pe telefon în timpul sesiunii; null = nesalvat (acces neacordat sau sesiune veche)
+                                .put("phoneMinutes", u?.let { (it.phoneMillis / 60_000).toInt() } ?: JSONObject.NULL)
+                                .apply {
+                                    // numele aplicațiilor doar în copia completă, nu în cea anonimizată
+                                    if (full && u != null) put("topApps", JSONArray(u.topApps))
+                                })
                         }
                     })
                 if (full) {

@@ -19,9 +19,10 @@ import md.utm.digitalmirror.domain.TitleKey
         AppUsage::class,
         Category::class,
         Activity::class,
-        WorkSession::class
+        WorkSession::class,
+        SessionUsage::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,6 +33,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun activityDao(): ActivityDao
     abstract fun workSessionDao(): WorkSessionDao
+    abstract fun sessionUsageDao(): SessionUsageDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -93,6 +95,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v4 → v5: timpul pe telefon pentru fiecare sesiune de cronometru
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `session_usage` (
+                        `startedAt` INTEGER NOT NULL,
+                        `activityId` INTEGER NOT NULL,
+                        `phoneMillis` INTEGER NOT NULL,
+                        `topApps` TEXT NOT NULL,
+                        `collectedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`startedAt`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -100,7 +120,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "digitalmirror.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }

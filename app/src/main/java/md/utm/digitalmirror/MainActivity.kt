@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.health.HealthSync
+import md.utm.digitalmirror.data.usage.UsageCollector
 import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.reminder.ReminderNotifications
 import md.utm.digitalmirror.reminder.ReminderScheduler
@@ -45,7 +46,11 @@ class MainActivity : ComponentActivity() {
     // așa că sincronizăm de fiecare dată când utilizatorul revine în aplicație
     override fun onResume() {
         super.onResume()
-        lifecycleScope.launch { HealthSync(applicationContext).syncIfPermitted() }
+        lifecycleScope.launch {
+            HealthSync(applicationContext).syncIfPermitted()
+            // timpul pe telefon pentru sesiunile terminate de la ultima deschidere
+            UsageCollector.collectMissing(applicationContext)
+        }
     }
 }
 

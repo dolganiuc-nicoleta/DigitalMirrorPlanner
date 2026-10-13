@@ -10,6 +10,8 @@ import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.data.usage.UsageCollector
+import md.utm.digitalmirror.data.usage.UsageReader
 import md.utm.digitalmirror.domain.ActivityInsight
 
 class ActivityDetailViewModel(app: Application) : AndroidViewModel(app) {
@@ -22,8 +24,13 @@ class ActivityDetailViewModel(app: Application) : AndroidViewModel(app) {
         val categoryName: String?,
         val sessions: List<WorkSession>,           // sesiunile de cronometru ale acestei activități
         val history: List<Activity>,               // celelalte activități cu același titlu, închise
-        val insight: ActivityInsight.Result
+        val insight: ActivityInsight.Result,
+        val usageEnabled: Boolean,                      // accesul la statistici e acordat
+        val usage: Map<Long, SessionPhoneUsage>         // cheia = startedAt al sesiunii
     )
+
+    /** Timpul pe telefon dintr-o sesiune, cu numele aplicațiilor deja rezolvate. */
+    data class SessionPhoneUsage(val minutes: Int, val apps: List<Pair<String, Int>>)
 
     private val _state = MutableStateFlow<UiState?>(null)
     val state: StateFlow<UiState?> = _state
@@ -40,6 +47,17 @@ class ActivityDetailViewModel(app: Application) : AndroidViewModel(app) {
                 .filter { it.id != activity.id && it.state in setOf("DONE", "PARTIAL") && it.actualMinutes != null }
         }.orEmpty()
 
+        // salvăm și sesiunile terminate de curând, ca pagina să fie la zi
+        UsageCollector.collectMissing(getApplication())
+        val usage = db.sessionUsageDao().getForActivity(activityId).associate { u ->
+            u.startedAt to SessionPhoneUsage(
+                minutes = (u.phoneMillis / 60_000).toInt(),
+                apps = UsageCollector.parseTopApps(u.topApps)
+                    .map { UsageReader.label(getApplication(), it.pkg) to (it.millis / 60_000).toInt() }
+                    .filter { it.second > 0 }
+            )
+        }
+
         val insight = ActivityInsight.compute(
             history.map {
                 ActivityInsight.Session(
@@ -55,7 +73,9 @@ class ActivityDetailViewModel(app: Application) : AndroidViewModel(app) {
             categoryName = categoryName,
             sessions = repo.sessionsFor(activityId),
             history = history,
-            insight = insight
+            insight = insight,
+            usageEnabled = UsageReader.hasPermission(getApplication()),
+            usage = usage
         )
     }
 }
