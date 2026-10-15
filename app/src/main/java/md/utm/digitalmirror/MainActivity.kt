@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import md.utm.digitalmirror.data.geo.GeofenceManager
 import md.utm.digitalmirror.data.health.HealthSync
 import md.utm.digitalmirror.data.usage.UsageCollector
 import md.utm.digitalmirror.reminder.ActivityReminders
@@ -56,6 +57,8 @@ class MainActivity : ComponentActivity() {
             HealthSync(applicationContext).syncIfPermitted()
             // timpul pe telefon pentru sesiunile terminate de la ultima deschidere
             UsageCollector.collectMissing(applicationContext)
+            // zonele locurilor se pierd la repornirea telefonului, așa că le verificăm la fiecare revenire
+            GeofenceManager.sync(applicationContext)
         }
     }
 }

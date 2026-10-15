@@ -23,6 +23,7 @@ import kotlin.math.roundToInt
 @Composable
 fun PlacesScreen(onBack: () -> Unit, vm: PlacesViewModel = viewModel()) {
     val places by vm.places.collectAsState()
+    val recentVisits by vm.recentVisits.collectAsState()
     // null = lista; altfel locul care se editează (id 0 = loc nou)
     var editing by remember { mutableStateOf<Place?>(null) }
     var deleting by remember { mutableStateOf<Place?>(null) }
@@ -68,6 +69,13 @@ fun PlacesScreen(onBack: () -> Unit, vm: PlacesViewModel = viewModel()) {
                     "Locurile rămân doar pe acest telefon. Le folosim ca să știm unde se desfășoară activitățile tale.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            item {
+                PresenceCard(
+                    placeCount = places.size,
+                    recentVisits = recentVisits,
+                    onChanged = { vm.syncGeofences() }
                 )
             }
             if (places.isEmpty()) {

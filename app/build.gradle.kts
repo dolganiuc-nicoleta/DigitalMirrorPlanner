@@ -68,4 +68,5 @@ dependencies {
     implementation(libs.androidx.credentials.play)
     implementation(libs.googleid)
     implementation(libs.osmdroid.android)
+    implementation(libs.play.services.location)
 }

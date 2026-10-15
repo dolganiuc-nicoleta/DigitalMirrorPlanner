@@ -9,8 +9,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import md.utm.digitalmirror.data.dao.RecentVisit
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Place
+import md.utm.digitalmirror.data.geo.GeofenceManager
 import md.utm.digitalmirror.data.geo.PlaceSearch
 
 data class SearchState(
@@ -19,29 +21,40 @@ data class SearchState(
     val message: String? = null        // „Nu am găsit nimic.” sau eroarea de rețea
 )
 
-class PlacesViewModel(app: Application) : AndroidViewModel(app) {
+class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val db = AppDatabase.get(app)
     private val dao = db.placeDao()
+    private val presenceDao = db.presenceLogDao()
 
     val places: StateFlow<List<Place>> =
         dao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ultimele intrări detectate, ca utilizatorul să vadă că detectarea merge
+    val recentVisits: StateFlow<List<RecentVisit>> =
+        presenceDao.observeRecent(8).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _search = MutableStateFlow(SearchState())
     val search: StateFlow<SearchState> = _search
 
     fun save(place: Place) = viewModelScope.launch {
         if (place.id == 0L) dao.insert(place) else dao.update(place)
+        GeofenceManager.sync(app)      // zonele urmăresc locurile salvate
     }
 
-    // desfacem legătura din activități și ștergem locul într-o singură tranzacție,
+    // desfacem legătura din activități, ștergem prezențele și locul într-o singură tranzacție,
     // ca lista să se actualizeze o singură dată, cu rezultatul final
     fun delete(place: Place) = viewModelScope.launch {
         db.withTransaction {
             dao.unlinkActivities(place.id)
+            presenceDao.deleteForPlace(place.id)
             dao.delete(place.id)
         }
+        GeofenceManager.sync(app)
     }
+
+    /** Reînregistrează zonele (după ce s-a schimbat comutatorul sau permisiunile). */
+    fun syncGeofences() = viewModelScope.launch { GeofenceManager.sync(app) }
 
     fun searchAddress(query: String) {
         if (_search.value.loading) return
