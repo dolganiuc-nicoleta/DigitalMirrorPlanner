@@ -146,7 +146,7 @@ private fun ThisTimeCard(a: Activity, sessionCount: Int) {
             val actual = a.actualMinutes
             val guess = a.userGuessMinutes
             val est = a.estimatedMinutes
-            if (actual != null && guess != null && est != null && a.actualSource in setOf("TIMER", "MANUAL")) {
+            if (actual != null && guess != null && est != null && a.actualSource in setOf("TIMER", "MANUAL", "LOCATION")) {
                 val userError = abs(actual - guess)
                 val appError = abs(actual - est)
                 Text(
@@ -246,7 +246,7 @@ private fun HistoryHeader() {
 @Composable
 private fun HistoryRow(a: Activity) {
     val planned = a.userEstimatedMinutes ?: a.estimatedMinutes
-    val reliable = a.actualSource in setOf("TIMER", "MANUAL")
+    val reliable = a.actualSource in setOf("TIMER", "MANUAL", "LOCATION")
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
             formatDay(a.date) + (a.plannedStartMinute?.let { " · ${formatMinute(it)}" } ?: ""),

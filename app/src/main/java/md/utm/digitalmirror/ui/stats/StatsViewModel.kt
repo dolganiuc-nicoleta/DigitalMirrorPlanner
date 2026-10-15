@@ -101,7 +101,7 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
                     (it.userEstimatedMinutes ?: 0) > 0 &&
                     it.actualMinutes != null &&
                     // duratele copiate din plan nu spun nimic despre cât a durat de fapt
-                    it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL)
+                    it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL, Activity.SOURCE_LOCATION)
         }
         if (usable.isEmpty()) return StatsUiState(period = period, evaluation = evaluation)
 
@@ -135,7 +135,7 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
             activities
                 .filter {
                     it.state == "DONE" && (it.actualMinutes ?: 0) > 0 &&
-                            it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL)
+                            it.actualSource in setOf(Activity.SOURCE_TIMER, Activity.SOURCE_MANUAL, Activity.SOURCE_LOCATION)
                 }
                 .map {
                     EstimateEvaluation.Record(

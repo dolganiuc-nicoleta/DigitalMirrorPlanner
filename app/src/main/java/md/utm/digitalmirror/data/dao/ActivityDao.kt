@@ -78,11 +78,14 @@ interface ActivityDao {
 
     @Query("UPDATE activity SET categoryId = NULL WHERE categoryId = :categoryId")
     suspend fun clearCategory(categoryId: Long)
+
+    // istoricul pentru estimator: doar duratele sigure (cronometru, corectate de utilizator,
+    // sau din locație și confirmate la Închiderea zilei)
     @Query("""
     SELECT * FROM activity
     WHERE state = 'DONE'
       AND actualMinutes > 0
-      AND (actualSource IN ('TIMER', 'MANUAL') OR actualSource IS NULL)
+      AND (actualSource IN ('TIMER', 'MANUAL', 'LOCATION') OR actualSource IS NULL)
     ORDER BY date DESC
     LIMIT :limit
 """)
