@@ -7,6 +7,12 @@ package md.utm.digitalmirror.domain
  */
 object TravelPlanner {
 
+    /** Eticheta activităților de tip drum, ca să le recunoaștem în zi. */
+    const val TRAVEL_TAG = "drum"
+
+    /** Titlul unei activități de drum: „Drum: Facultate → Sală”. */
+    fun tripTitle(fromName: String, toName: String): String = "Drum: $fromName → $toName"
+
     /** O activitate din zi, redusă la ce contează pentru drum. */
     data class Stop(
         val id: Long,
@@ -29,6 +35,9 @@ object TravelPlanner {
 
         /** Ora la care trebuie să pleci ca să ajungi la timp. */
         fun departMinute(travelMinutes: Int): Int = to.startMinute!! - travelMinutes
+
+        /** Cu câte minute depășește drumul timpul liber (0 dacă încape). */
+        fun shortfall(travelMinutes: Int): Int = (travelMinutes - availableMinutes).coerceAtLeast(0)
     }
 
     /**

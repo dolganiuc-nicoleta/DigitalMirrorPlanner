@@ -67,6 +67,8 @@ fun DayScreen(
     val calendarEvents by vm.calendarEvents.collectAsState()
     val fixedBlocks by vm.fixedBlocks.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
+    val legs by vm.legs.collectAsState()
+    val travelMode by vm.travelMode.collectAsState()
 
     // comutatorul din Setări; se recitește de fiecare dată când ecranul reintră în compoziție
     val context = LocalContext.current
@@ -190,6 +192,17 @@ fun DayScreen(
                 }
                 if (fixedBlocks.isNotEmpty()) {
                     item { FixedBlocksCard(fixedBlocks) }
+                }
+                if (legs.isNotEmpty()) {
+                    item {
+                        TravelLegsCard(
+                            legs = legs,
+                            mode = travelMode,
+                            onModeChange = { vm.setTravelMode(it) },
+                            onEstimate = { vm.estimateLeg(it) },
+                            onAdd = { vm.addTravel(it) }
+                        )
+                    }
                 }
                 if (calendarEvents.isNotEmpty()) {
                     item { CalendarCard(calendarEvents) }

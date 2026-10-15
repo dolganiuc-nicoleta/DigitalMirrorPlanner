@@ -15,11 +15,16 @@ import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
+import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.data.travel.TravelRepository
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
+import md.utm.digitalmirror.domain.Tags
+import md.utm.digitalmirror.domain.TravelEstimator
+import md.utm.digitalmirror.domain.TravelPlanner
 import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import java.time.LocalDate
@@ -28,6 +33,22 @@ import java.time.LocalDate
 class DayViewModel(private val app: Application) : AndroidViewModel(app) {
 
     data class FinishDraft(val activity: Activity, val trackedMinutes: Int)
+
+    /** Estimarea unui drum din zi: se calculează la cerere, ca să nu apelăm rețeaua degeaba. */
+    data class LegEstimate(
+        val loading: Boolean = false,
+        val minutes: Int? = null,
+        val error: String? = null
+    )
+
+    /** Un drum necesar între două activități consecutive, gata de afișat. */
+    data class LegUi(
+        val leg: TravelPlanner.Leg,
+        val fromName: String,
+        val toName: String,
+        val estimate: LegEstimate,
+        val added: Boolean            // există deja o activitate „Drum: …” pentru el
+    )
 
     // 1. repository
     private val repo: PlannerRepository = AppDatabase.get(app).let { db ->
@@ -50,6 +71,8 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+
+    private val travel = TravelRepository(app)
 
     // 2. starea
     private val _date = MutableStateFlow(LocalDate.now().toString())
@@ -82,6 +105,83 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
     val activities: StateFlow<List<Activity>> =
         _date.flatMapLatest { repo.observeActivitiesForDate(it) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // modul de deplasare (același ca în „Locuri”) și estimările făcute în această sesiune
+    private val _travelMode = MutableStateFlow(TravelPrefs.mode(app))
+    val travelMode: StateFlow<TravelEstimator.Mode> = _travelMode
+
+    private val legEstimates = MutableStateFlow<Map<String, LegEstimate>>(emptyMap())
+
+    private fun legKey(leg: TravelPlanner.Leg, mode: TravelEstimator.Mode) =
+        "${leg.from.id}-${leg.to.id}-${mode.name}"
+
+    // drumurile dintre activitățile zilei care au loc și oră, la locuri diferite
+    val legs: StateFlow<List<LegUi>> =
+        combine(activities, places, _travelMode, legEstimates) { list, allPlaces, mode, estimates ->
+            val active = list.filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+            val stops = active.map {
+                TravelPlanner.Stop(
+                    id = it.id,
+                    title = it.title,
+                    placeId = it.placeId,
+                    startMinute = it.plannedStartMinute,
+                    durationMinutes = it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0
+                )
+            }
+            val names = allPlaces.associate { it.id to it.name }
+            TravelPlanner.legs(stops).map { leg ->
+                val from = names[leg.from.placeId] ?: return@map null
+                val to = names[leg.to.placeId] ?: return@map null
+                val title = TravelPlanner.tripTitle(from, to)
+                LegUi(
+                    leg = leg,
+                    fromName = from,
+                    toName = to,
+                    estimate = estimates[legKey(leg, mode)] ?: LegEstimate(),
+                    added = active.any { it.title == title && TravelPlanner.TRAVEL_TAG in Tags.decode(it.tags) }
+                )
+            }.filterNotNull()
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun setTravelMode(mode: TravelEstimator.Mode) {
+        TravelPrefs.setMode(app, mode)
+        _travelMode.value = mode
+    }
+
+    /** Estimează drumul unei perechi de activități; rezultatul rămâne cât ține ecranul. */
+    fun estimateLeg(item: LegUi) {
+        val mode = _travelMode.value
+        val key = legKey(item.leg, mode)
+        if (legEstimates.value[key]?.loading == true) return
+        val from = places.value.find { it.id == item.leg.from.placeId } ?: return
+        val to = places.value.find { it.id == item.leg.to.placeId } ?: return
+        legEstimates.value = legEstimates.value + (key to LegEstimate(loading = true))
+        viewModelScope.launch {
+            val result = travel.estimate(from, to, mode)
+            legEstimates.value = legEstimates.value + (key to result.fold(
+                onSuccess = { LegEstimate(minutes = it.estimate.minutes) },
+                onFailure = { LegEstimate(error = it.message ?: "Ceva nu a mers.") }
+            ))
+        }
+    }
+
+    /** Adaugă drumul ca activitate, care începe la ora la care trebuie să pleci. */
+    fun addTravel(item: LegUi) = viewModelScope.launch {
+        val minutes = item.estimate.minutes ?: return@launch
+        if (item.added) return@launch
+        val activity = Activity(
+            title = TravelPlanner.tripTitle(item.fromName, item.toName),
+            categoryId = null,
+            date = _date.value,
+            plannedStartMinute = item.leg.departMinute(minutes).coerceAtLeast(0),
+            estimatedMinutes = null,
+            userEstimatedMinutes = minutes,
+            actualMinutes = null,
+            tags = TravelPlanner.TRAVEL_TAG
+        )
+        val id = repo.addActivity(activity)
+        ActivityReminders.onActivityPlanned(app, activity.copy(id = id))
+    }
 
     // reflecția zilei afișate; null = ziua nu a fost încă închisă
     val reflection: StateFlow<Reflection?> =
