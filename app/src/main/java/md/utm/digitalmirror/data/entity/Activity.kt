@@ -39,7 +39,8 @@ data class Activity(
     val postponedCount: Int = 0,
     val titleKey: String? = null,        // v4 · titlul normalizat, pentru a găsi activitățile „la fel”
     @ColumnInfo(defaultValue = "''")
-    val tags: String = ""                // v9 · etichete separate prin virgulă, fără #
+    val tags: String = "",               // v9 · etichete separate prin virgulă, fără #
+    val weekTaskId: Long? = null         // v10 · sarcina din planul săptămânii din care vine sesiunea
 ) {
     companion object {
         // sursele durate reale; estimatorul învață doar din cele sigure

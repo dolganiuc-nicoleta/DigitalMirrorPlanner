@@ -49,6 +49,8 @@ import java.util.Locale
 fun DayScreen(
     onCloseDay: (String) -> Unit = {},
     onOpenActivity: (Long) -> Unit = {},
+    onPlan: () -> Unit = {},
+    onPlanWeek: () -> Unit = {},
     vm: DayViewModel = viewModel()
 ) {
     val date by vm.date.collectAsState()
@@ -122,6 +124,14 @@ fun DayScreen(
                             Text("⋮", style = MaterialTheme.typography.titleMedium)
                         }
                         DropdownMenu(expanded = dayMenuOpen, onDismissRequest = { dayMenuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Planifică din text") },
+                                onClick = { dayMenuOpen = false; onPlan() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Planifică săptămâna") },
+                                onClick = { dayMenuOpen = false; onPlanWeek() }
+                            )
                             DropdownMenuItem(
                                 text = { Text(if (isDayOff) "Scoate marcajul de zi liberă" else "Marchează ca zi liberă") },
                                 onClick = { dayMenuOpen = false; vm.toggleDayOff() }

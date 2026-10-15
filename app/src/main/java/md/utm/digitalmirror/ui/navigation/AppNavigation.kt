@@ -22,15 +22,20 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import md.utm.digitalmirror.data.auth.AuthRepository
+import md.utm.digitalmirror.data.prefs.AuthPrefs
 import md.utm.digitalmirror.ui.activity.ActivityDetailScreen
+import md.utm.digitalmirror.ui.auth.AuthScreen
 import md.utm.digitalmirror.ui.capsule.CapsuleScreen
 import md.utm.digitalmirror.ui.closing.ClosingScreen
 import md.utm.digitalmirror.ui.day.DayScreen
 import md.utm.digitalmirror.ui.goals.GoalsScreen
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import md.utm.digitalmirror.ui.onboarding.OnboardingScreen
+import md.utm.digitalmirror.ui.plan.PlanScreen
 import md.utm.digitalmirror.ui.report.ReportScreen
 import md.utm.digitalmirror.ui.settings.SettingsScreen
+import md.utm.digitalmirror.ui.week.WeekScreen
 import md.utm.digitalmirror.ui.stats.StatsScreen
 import java.time.LocalDate
 
@@ -41,9 +46,12 @@ object Routes {
     const val GOALS = "goals"
     const val CAPSULE = "capsule"
     const val REPORT = "report"
+    const val PLAN = "plan"
+    const val WEEK = "week"
     const val SETTINGS = "settings"
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
+    const val AUTH = "auth"
     const val ACTIVITY = "activity/{id}"
 
     fun closing(date: String) = "closing/$date"
@@ -65,8 +73,14 @@ private val tabs = listOf(
 fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
     val navController = rememberNavController()
     val context = LocalContext.current
-    // prima pornire: configurarea inițială; după aceea direct ecranul zilei
-    val startDestination = remember { if (OnboardingPrefs.isDone(context)) Routes.DAY else Routes.ONBOARDING }
+    // prima pornire: autentificare (sau „fără cont”), apoi configurarea inițială; după aceea direct ecranul zilei
+    val startDestination = remember {
+        when {
+            OnboardingPrefs.isDone(context) -> Routes.DAY
+            AuthRepository.isSignedIn || AuthPrefs.skipped(context) -> Routes.ONBOARDING
+            else -> Routes.AUTH
+        }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
@@ -122,7 +136,27 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 }
                 DayScreen(
                     onCloseDay = { date -> navController.navigate(Routes.closing(date)) },
-                    onOpenActivity = { id -> navController.navigate(Routes.activity(id)) }
+                    onOpenActivity = { id -> navController.navigate(Routes.activity(id)) },
+                    onPlan = { navController.navigate(Routes.PLAN) },
+                    onPlanWeek = { navController.navigate(Routes.WEEK) }
+                )
+            }
+
+            composable(Routes.AUTH) {
+                // la prima pornire nu există „înapoi”; din Setări există și nu arătăm „Continuă fără cont”
+                val firstRun = !OnboardingPrefs.isDone(context)
+                AuthScreen(
+                    allowSkip = firstRun,
+                    onBack = if (firstRun) null else ({ navController.popBackStack() }),
+                    onDone = {
+                        if (firstRun) {
+                            navController.navigate(Routes.ONBOARDING) {
+                                popUpTo(Routes.AUTH) { inclusive = true }
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    }
                 )
             }
 
@@ -138,6 +172,17 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 StatsScreen(onOpenReport = { navController.navigate(Routes.REPORT) })
             }
 
+            composable(Routes.PLAN) {
+                PlanScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.WEEK) {
+                WeekScreen(
+                    onBack = { navController.popBackStack() },
+                    onPlanTomorrow = { navController.navigate(Routes.PLAN) }
+                )
+            }
+
             composable(Routes.REPORT) {
                 ReportScreen(onBack = { navController.popBackStack() })
             }
@@ -151,7 +196,7 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
             }
 
             composable(Routes.SETTINGS) {
-                SettingsScreen()
+                SettingsScreen(onOpenAuth = { navController.navigate(Routes.AUTH) })
             }
 
             composable(
@@ -173,7 +218,7 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
 
         // deschis din notificarea capsulei → mergem direct la tabul Capsulă, o singură dată
         LaunchedEffect(openCapsule) {
-            if (openCapsule && !capsuleHandled && startDestination != Routes.ONBOARDING) {
+            if (openCapsule && !capsuleHandled && startDestination != Routes.ONBOARDING && startDestination != Routes.AUTH) {
                 capsuleHandled = true
                 navController.navigate(Routes.CAPSULE)
             }
