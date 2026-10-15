@@ -32,6 +32,7 @@ import md.utm.digitalmirror.ui.day.DayScreen
 import md.utm.digitalmirror.ui.goals.GoalsScreen
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import md.utm.digitalmirror.ui.onboarding.OnboardingScreen
+import md.utm.digitalmirror.ui.places.PlacesScreen
 import md.utm.digitalmirror.ui.plan.PlanScreen
 import md.utm.digitalmirror.ui.report.ReportScreen
 import md.utm.digitalmirror.ui.settings.SettingsScreen
@@ -52,6 +53,7 @@ object Routes {
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
     const val AUTH = "auth"
+    const val PLACES = "places"
     const val ACTIVITY = "activity/{id}"
 
     fun closing(date: String) = "closing/$date"
@@ -196,7 +198,14 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
             }
 
             composable(Routes.SETTINGS) {
-                SettingsScreen(onOpenAuth = { navController.navigate(Routes.AUTH) })
+                SettingsScreen(
+                    onOpenAuth = { navController.navigate(Routes.AUTH) },
+                    onOpenPlaces = { navController.navigate(Routes.PLACES) }
+                )
+            }
+
+            composable(Routes.PLACES) {
+                PlacesScreen(onBack = { navController.popBackStack() })
             }
 
             composable(

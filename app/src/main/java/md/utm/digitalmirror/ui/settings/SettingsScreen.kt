@@ -34,7 +34,11 @@ import md.utm.digitalmirror.data.health.HealthSync
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onOpenAuth: () -> Unit = {}, vm: SettingsViewModel = viewModel()) {
+fun SettingsScreen(
+    onOpenAuth: () -> Unit = {},
+    onOpenPlaces: () -> Unit = {},
+    vm: SettingsViewModel = viewModel()
+) {
     val context = LocalContext.current
 
     // contul: e-mailul se schimbă singur la autentificare și la ieșire din cont
@@ -269,6 +273,28 @@ fun SettingsScreen(onOpenAuth: () -> Unit = {}, vm: SettingsViewModel = viewMode
                             }
                         }
                         healthMessage?.let { Hint(it) }
+                    }
+                }
+            }
+
+            // 3a. locurile (Facultate, Sală…) alese pe hartă
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Locuri")
+            }
+            item {
+                val placeCount by vm.placeCount.collectAsState()
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            if (placeCount == 0) "Nu ai încă niciun loc"
+                            else if (placeCount == 1) "1 loc salvat" else "$placeCount locuri salvate"
+                        )
+                        Hint("Locurile rămân pe telefon. Cu ele aplicația va ști unde se desfășoară activitățile.")
+                        OutlinedButton(onClick = onOpenPlaces) { Text("Gestionează locurile") }
                     }
                 }
             }

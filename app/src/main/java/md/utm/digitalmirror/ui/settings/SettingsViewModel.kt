@@ -47,6 +47,11 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
         ReminderScheduler.schedule(app, replaceExisting = true)
     }
 
+    // locurile alese pe hartă (doar numărul; lista e pe ecranul Locuri)
+    val placeCount: StateFlow<Int> =
+        db.placeDao().observeCount()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     // 2. categorii
     val categories: StateFlow<List<Category>> =
         repo.observeCategories()
