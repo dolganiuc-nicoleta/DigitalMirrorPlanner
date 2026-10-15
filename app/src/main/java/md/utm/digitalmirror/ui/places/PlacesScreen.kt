@@ -24,6 +24,7 @@ import kotlin.math.roundToInt
 fun PlacesScreen(onBack: () -> Unit, vm: PlacesViewModel = viewModel()) {
     val places by vm.places.collectAsState()
     val recentVisits by vm.recentVisits.collectAsState()
+    val route by vm.route.collectAsState()
     // null = lista; altfel locul care se editează (id 0 = loc nou)
     var editing by remember { mutableStateOf<Place?>(null) }
     var deleting by remember { mutableStateOf<Place?>(null) }
@@ -76,6 +77,13 @@ fun PlacesScreen(onBack: () -> Unit, vm: PlacesViewModel = viewModel()) {
                     placeCount = places.size,
                     recentVisits = recentVisits,
                     onChanged = { vm.syncGeofences() }
+                )
+            }
+            item {
+                RouteCard(
+                    places = places,
+                    state = route,
+                    onEstimate = { from, to, mode -> vm.estimateRoute(from, to, mode) }
                 )
             }
             if (places.isEmpty()) {

@@ -14,6 +14,9 @@ import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.geo.GeofenceManager
 import md.utm.digitalmirror.data.geo.PlaceSearch
+import md.utm.digitalmirror.data.prefs.TravelPrefs
+import md.utm.digitalmirror.data.travel.TravelRepository
+import md.utm.digitalmirror.domain.TravelEstimator
 
 data class SearchState(
     val loading: Boolean = false,
@@ -21,11 +24,37 @@ data class SearchState(
     val message: String? = null        // „Nu am găsit nimic.” sau eroarea de rețea
 )
 
+/** Rezultatul ultimei estimări de drum, pentru cardul „Drum între locuri”. */
+data class RouteUi(
+    val loading: Boolean = false,
+    val outcome: TravelRepository.Outcome? = null,
+    val fromName: String = "",
+    val toName: String = "",
+    val error: String? = null
+)
+
 class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val db = AppDatabase.get(app)
     private val dao = db.placeDao()
     private val presenceDao = db.presenceLogDao()
+    private val routeDao = db.travelRouteDao()
+    private val travel = TravelRepository(app)
+
+    private val _route = MutableStateFlow(RouteUi())
+    val route: StateFlow<RouteUi> = _route
+
+    /** Estimează drumul dintre două locuri; modul ales se păstrează pentru data viitoare. */
+    fun estimateRoute(from: Place, to: Place, mode: TravelEstimator.Mode) {
+        if (_route.value.loading) return
+        TravelPrefs.setMode(app, mode)
+        _route.value = RouteUi(loading = true)
+        viewModelScope.launch {
+            travel.estimate(from, to, mode)
+                .onSuccess { _route.value = RouteUi(outcome = it, fromName = from.name, toName = to.name) }
+                .onFailure { _route.value = RouteUi(error = it.message ?: "Ceva nu a mers.") }
+        }
+    }
 
     val places: StateFlow<List<Place>> =
         dao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -38,7 +67,11 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
     val search: StateFlow<SearchState> = _search
 
     fun save(place: Place) = viewModelScope.launch {
-        if (place.id == 0L) dao.insert(place) else dao.update(place)
+        if (place.id == 0L) dao.insert(place)
+        else {
+            dao.update(place)
+            routeDao.deleteForPlace(place.id)     // locul s-ar fi putut muta, drumurile vechi nu mai sunt bune
+        }
         GeofenceManager.sync(app)      // zonele urmăresc locurile salvate
     }
 
@@ -48,6 +81,7 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
         db.withTransaction {
             dao.unlinkActivities(place.id)
             presenceDao.deleteForPlace(place.id)
+            routeDao.deleteForPlace(place.id)
             dao.delete(place.id)
         }
         GeofenceManager.sync(app)

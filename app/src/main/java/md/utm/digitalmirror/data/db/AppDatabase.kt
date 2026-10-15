@@ -30,9 +30,10 @@ import md.utm.digitalmirror.domain.TitleKey
         CapsuleGoal::class,
         WeekTask::class,
         Place::class,
-        PresenceLog::class
+        PresenceLog::class,
+        TravelRoute::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,6 +51,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun weekTaskDao(): WeekTaskDao
     abstract fun placeDao(): PlaceDao
     abstract fun presenceLogDao(): PresenceLogDao
+    abstract fun travelRouteDao(): TravelRouteDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -269,6 +271,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v13 → v14: drumurile calculate între locuri (păstrate ca să nu cerem de două ori același drum)
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `travel_route` (" +
+                            "`fromPlaceId` INTEGER NOT NULL, `toPlaceId` INTEGER NOT NULL, `profile` TEXT NOT NULL, " +
+                            "`distanceMeters` REAL NOT NULL, `durationSeconds` REAL NOT NULL, `fetchedAt` INTEGER NOT NULL, " +
+                            "PRIMARY KEY(`fromPlaceId`, `toPlaceId`, `profile`))"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -276,7 +290,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "digitalmirror.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .build()
                     .also { INSTANCE = it }
             }
