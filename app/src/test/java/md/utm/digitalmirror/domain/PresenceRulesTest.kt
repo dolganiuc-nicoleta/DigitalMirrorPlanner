@@ -59,6 +59,17 @@ class PresenceRulesTest {
     }
 
     @Test
+    fun `o intrare fara iesire se socoteste pana acum, dar cel mult 12 ore`() {
+        val hour = 60 * min
+        // ieșire detectată: se folosește ea
+        assertEquals(50 * min, PresenceRules.resolveEnd(0, 50 * min, 999 * hour))
+        // încă în loc, acum la 2 ore de la intrare
+        assertEquals(2 * hour, PresenceRules.resolveEnd(0, null, 2 * hour))
+        // ieșire pierdută, acum la 30 de ore: limita de 12 ore
+        assertEquals(12 * hour, PresenceRules.resolveEnd(0, null, 30 * hour))
+    }
+
+    @Test
     fun `minutele se aduna pe locuri`() {
         val minutes = PresenceRules.minutesByPlace(
             listOf(Visit(1, 0, 60 * min), Visit(1, 100 * min, 130 * min), Visit(2, 0, 20 * min))

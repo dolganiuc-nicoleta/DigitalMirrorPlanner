@@ -11,8 +11,10 @@ import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.domain.PresenceRules
 import md.utm.digitalmirror.reminder.ActivityReminders
 import java.time.LocalDate
+import java.time.ZoneId
 
 private val CLOSED_STATES = setOf("DONE", "PARTIAL", "POSTPONED", "ABANDONED")
 
@@ -35,6 +37,35 @@ class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _tracked = MutableStateFlow<Map<Long, Int>>(emptyMap())
     val tracked: StateFlow<Map<Long, Int>> = _tracked
 
+    // prezențele detectate în ziua aceasta, curățate (vizite unite, cele foarte scurte scoase)
+    data class PresenceView(val placeId: Long, val placeName: String, val start: Long, val end: Long) {
+        val minutes: Int get() = ((end - start) / 60_000L).toInt()
+    }
+
+    private val _presence = MutableStateFlow<Map<Long, Int>>(emptyMap())     // minute pe loc
+    private val _presenceViews = MutableStateFlow<List<PresenceView>>(emptyList())
+    val presenceViews: StateFlow<List<PresenceView>> = _presenceViews
+
+    private suspend fun loadPresence(date: String) {
+        val zone = ZoneId.systemDefault()
+        val day = LocalDate.parse(date)
+        val from = day.atStartOfDay(zone).toInstant().toEpochMilli()
+        val to = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val now = System.currentTimeMillis()
+
+        val raw = db.presenceLogDao().overlapping(from, to).map {
+            PresenceRules.Visit(it.placeId, it.enterAt, PresenceRules.resolveEnd(it.enterAt, it.exitAt, now))
+        }
+        // întâi curățăm (unim, scoatem trecerile), apoi tăiem la ziua cerută
+        val clipped = PresenceRules.clipTo(PresenceRules.clean(raw), from, to)
+        val names = db.placeDao().getAll().associate { it.id to it.name }
+
+        _presence.value = PresenceRules.minutesByPlace(clipped)
+        _presenceViews.value = clipped.map {
+            PresenceView(it.placeId, names[it.placeId] ?: "loc șters", it.start, it.end)
+        }
+    }
+
     private val _reflection = MutableStateFlow<Reflection?>(null)
     val reflection: StateFlow<Reflection?> = _reflection
 
@@ -47,6 +78,7 @@ class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _reflection.value = reflectionDao.getByDate(date)
             _daily.value = dailyDao.getByDate(date)
+            loadPresence(date)
             val list = planner.observeActivitiesForDate(date).first()
             _tracked.value = list.associate { it.id to planner.trackedMinutes(it.id) }
         }
@@ -70,15 +102,20 @@ class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _edits = MutableStateFlow<Map<Long, Draft>>(emptyMap())
 
     val drafts: StateFlow<List<Draft>> =
-        combine(activities, _tracked, _edits) { list, tracked, edits ->
-            list.filter { it.state !in CLOSED_STATES }
-                .map { a -> edits[a.id] ?: defaultDraft(a, tracked[a.id] ?: 0) }
+        combine(activities, _tracked, _edits, _presence) { list, tracked, edits, presence ->
+            val open = list.filter { it.state !in CLOSED_STATES }
+            // câte activități deschise are fiecare loc: durata din locație o propunem doar dacă e una singură
+            val perPlace = open.mapNotNull { it.placeId }.groupingBy { it }.eachCount()
+            open.map { a -> edits[a.id] ?: defaultDraft(a, tracked[a.id] ?: 0, presence, perPlace) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private fun defaultDraft(a: Activity, tracked: Int): Draft {
+    private fun defaultDraft(a: Activity, tracked: Int, presence: Map<Long, Int>, perPlace: Map<Long, Int>): Draft {
         val planned = a.userEstimatedMinutes ?: a.estimatedMinutes
+        // cu două activități la același loc nu știm cum se împarte prezența, deci nu propunem nimic
+        val located = a.placeId?.takeIf { perPlace[it] == 1 }?.let { presence[it] }?.takeIf { it > 0 }
         return when {
             tracked > 0 -> Draft(a, "DONE", tracked, Activity.SOURCE_TIMER, tracked)
+            located != null -> Draft(a, "DONE", located, Activity.SOURCE_LOCATION, 0)
             planned != null -> Draft(a, "DONE", planned, Activity.SOURCE_AS_PLANNED, 0)
             else -> Draft(a, "DONE", null, null, 0)
         }

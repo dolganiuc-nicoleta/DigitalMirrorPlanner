@@ -136,6 +136,7 @@ private fun ThisTimeCard(a: Activity, sessionCount: Int) {
                         "TIMER" -> " · din cronometru"
                         "MANUAL" -> " · corectat de tine"
                         "AS_PLANNED" -> " · copiat din plan"
+                        "LOCATION" -> " · din locație"
                         else -> ""
                     }
                 )

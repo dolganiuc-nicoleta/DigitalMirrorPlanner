@@ -50,5 +50,6 @@ data class Activity(
         const val SOURCE_AS_PLANNED = "AS_PLANNED"
         const val SOURCE_CALENDAR = "CALENDAR"
         const val SOURCE_HEALTH = "HEALTH"
+        const val SOURCE_LOCATION = "LOCATION"   // cât timp a fost telefonul la locul activității
     }
 }

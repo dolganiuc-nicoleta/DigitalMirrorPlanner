@@ -37,6 +37,7 @@ fun ClosingScreen(
 
     val activities by vm.activities.collectAsState()
     val drafts by vm.drafts.collectAsState()
+    val presenceViews by vm.presenceViews.collectAsState()
     val reflection by vm.reflection.collectAsState()
     val daily by vm.daily.collectAsState()
 
@@ -69,6 +70,27 @@ fun ClosingScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+
+            // 0. unde a fost telefonul azi (din detectarea automată), doar dacă există prezențe
+            if (presenceViews.isNotEmpty()) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("Unde ai fost azi", fontWeight = FontWeight.Medium)
+                            presenceViews.forEach { v ->
+                                Text(
+                                    "${v.placeName} · ${clock(v.start)}–${clock(v.end)} (${formatDuration(v.minutes)})",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Hint("Din detectarea automată. Folosim asta ca să propunem durata activităților de la acele locuri.")
+                        }
+                    }
+                }
+            }
 
             // 1. activități de confirmat, precompletate
             item { SectionTitle("De confirmat (${drafts.size})") }
@@ -332,6 +354,7 @@ private fun DraftCard(
                             when (draft.source) {
                                 "AS_PLANNED" -> Hint("copiată din plan · corectează dacă a durat altfel")
                                 "TIMER" -> Hint("din cronometru")
+                                "LOCATION" -> Hint("din locație: cât ai fost la loc · corectează dacă a durat altfel")
                                 "MANUAL" -> Hint("corectată de tine")
                             }
                         }
@@ -361,3 +384,8 @@ private fun labelOf(state: String) =
     STATE_OPTIONS.firstOrNull { it.first == state }?.second ?: state
 
 private fun formatMinute(m: Int): String = "%02d:%02d".format(m / 60, m % 60)
+
+// ora locală dintr-un moment în milisecunde
+private fun clock(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault())
+        .toLocalTime().let { "%02d:%02d".format(it.hour, it.minute) }

@@ -15,6 +15,16 @@ object PresenceRules {
     /** Două vizite la același loc, cu pauză de cel mult 10 minute între ele, sunt una singură. */
     const val MERGE_GAP_MILLIS = 10 * 60_000L
 
+    /**
+     * O ieșire nedetectată (telefon oprit, economisire de baterie) ar lăsa vizita deschisă la nesfârșit.
+     * O intrare fără ieșire se socotește cel mult 12 ore.
+     */
+    const val MAX_OPEN_MILLIS = 12 * 60 * 60_000L
+
+    /** Sfârșitul unei vizite: ieșirea detectată, sau „acum” pentru una încă deschisă (cu limita de mai sus). */
+    fun resolveEnd(enterAt: Long, exitAt: Long?, now: Long): Long =
+        exitAt ?: minOf(now, enterAt + MAX_OPEN_MILLIS)
+
     data class Visit(val placeId: Long, val start: Long, val end: Long) {
         val minutes: Int get() = ((end - start) / 60_000L).toInt()
     }
