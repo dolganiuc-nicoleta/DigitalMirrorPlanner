@@ -3,6 +3,7 @@ package md.utm.digitalmirror.ui.places
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +21,8 @@ data class SearchState(
 
 class PlacesViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val dao = AppDatabase.get(app).placeDao()
+    private val db = AppDatabase.get(app)
+    private val dao = db.placeDao()
 
     val places: StateFlow<List<Place>> =
         dao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -32,7 +34,14 @@ class PlacesViewModel(app: Application) : AndroidViewModel(app) {
         if (place.id == 0L) dao.insert(place) else dao.update(place)
     }
 
-    fun delete(place: Place) = viewModelScope.launch { dao.delete(place.id) }
+    // desfacem legătura din activități și ștergem locul într-o singură tranzacție,
+    // ca lista să se actualizeze o singură dată, cu rezultatul final
+    fun delete(place: Place) = viewModelScope.launch {
+        db.withTransaction {
+            dao.unlinkActivities(place.id)
+            dao.delete(place.id)
+        }
+    }
 
     fun searchAddress(query: String) {
         if (_search.value.loading) return

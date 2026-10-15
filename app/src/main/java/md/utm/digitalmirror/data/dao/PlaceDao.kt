@@ -27,4 +27,8 @@ interface PlaceDao {
 
     @Query("DELETE FROM place WHERE id = :id")
     suspend fun delete(id: Long)
+
+    /** La ștergerea unui loc, activitățile lui rămân, dar fără loc. */
+    @Query("UPDATE activity SET placeId = NULL WHERE placeId = :id")
+    suspend fun unlinkActivities(id: Long)
 }

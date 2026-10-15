@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DailyActivity
+import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
@@ -56,6 +57,7 @@ fun DayScreen(
     val date by vm.date.collectAsState()
     val activities by vm.activities.collectAsState()
     val categories by vm.categories.collectAsState()
+    val places by vm.places.collectAsState()
     val running by vm.runningSession.collectAsState()
     val finishDraft by vm.finishDraft.collectAsState()
     val runningOffset by vm.runningOffset.collectAsState()
@@ -231,6 +233,7 @@ fun DayScreen(
                     ActivityRow(
                         activity = activity,
                         categoryName = categories.find { it.id == activity.categoryId }?.name,
+                        placeName = places.find { it.id == activity.placeId }?.name,
                         runningSince = running?.takeIf { it.activityId == activity.id }?.startedAt,
                         offsetMillis = runningOffset,
                         onToggleTimer = { vm.toggleTimer(activity) },
@@ -276,6 +279,7 @@ fun DayScreen(
         ActivityDialog(
             initial = null,
             categories = categories,
+            places = places,
             date = date,
             dayActivities = activities,
             loadEstimatorHistory = { vm.estimatorHistory() },
@@ -289,7 +293,7 @@ fun DayScreen(
             onConfirm = { r ->
                 vm.addActivity(
                     r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.guessMinutes, r.estimate,
-                    r.note, r.tags
+                    r.note, r.tags, r.placeId
                 )
                 showAddDialog = false
             }
@@ -301,6 +305,7 @@ fun DayScreen(
         ActivityDialog(
             initial = activity,
             categories = categories,
+            places = places,
             date = date,
             dayActivities = activities,
             loadEstimatorHistory = { vm.estimatorHistory() },
@@ -312,7 +317,7 @@ fun DayScreen(
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
-                vm.editActivity(activity.id, r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.note, r.tags)
+                vm.editActivity(activity.id, r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.note, r.tags, r.placeId)
                 editing = null
             }
         )
@@ -344,6 +349,7 @@ fun DayScreen(
 private fun ActivityRow(
     activity: Activity,
     categoryName: String?,
+    placeName: String?,
     runningSince: Long?,
     offsetMillis: Long,
     onToggleTimer: () -> Unit,
@@ -384,6 +390,7 @@ private fun ActivityRow(
                             add(if (end != null) "${formatMinute(start)}–${formatMinute(end)}" else formatMinute(start))
                         }
                         categoryName?.let { add(it) }
+                        placeName?.let { add("la $it") }
                         activity.userEstimatedMinutes?.let { add("planificat ${formatDuration(it)}") }
                         if (!isRunning) activity.actualMinutes?.let { add("real ${formatDuration(it)}") }
                         add(stateLabel(activity.state))
@@ -760,7 +767,8 @@ private data class ActivityFormResult(
     val guessMinutes: Int?,                    // doar la adăugare
     val estimate: HistoryEstimator.Estimate?,  // doar la adăugare
     val note: String,
-    val tags: String                           // deja în forma salvată (fără #, separate prin virgulă)
+    val tags: String,                          // deja în forma salvată (fără #, separate prin virgulă)
+    val placeId: Long?                         // locul ales la „Unde?”, null = fără loc
 )
 
 /**
@@ -775,6 +783,7 @@ private data class ActivityFormResult(
 private fun ActivityDialog(
     initial: Activity?,
     categories: List<Category>,
+    places: List<Place>,
     date: String,
     dayActivities: List<Activity>,
     loadEstimatorHistory: suspend () -> List<HistoryEstimator.Sample>,
@@ -795,6 +804,8 @@ private fun ActivityDialog(
     }
     var newCategory by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
+    var selectedPlaceId by remember { mutableStateOf(initial?.placeId) }
+    var placeExpanded by remember { mutableStateOf(false) }
     var startMinute by remember { mutableStateOf(initial?.plannedStartMinute) }
     var showTimePicker by remember { mutableStateOf(false) }
     var tagsInput by remember { mutableStateOf(initial?.let { Tags.toInput(it.tags) } ?: "") }
@@ -933,6 +944,45 @@ private fun ActivityDialog(
                     ) { Text("Adaugă") }
                 }
 
+                // unde se desfășoară (opțional); locurile se adaugă în Setări → Locuri
+                if (places.isEmpty()) {
+                    Hint("Ca să alegi un loc, adaugă-l mai întâi în Setări → Locuri.")
+                } else {
+                    ExposedDropdownMenuBox(
+                        expanded = placeExpanded,
+                        onExpandedChange = { placeExpanded = !placeExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = places.find { it.id == selectedPlaceId }?.name ?: "fără loc",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Unde?") },
+                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = placeExpanded,
+                            onDismissRequest = { placeExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("fără loc") },
+                                onClick = {
+                                    selectedPlaceId = null
+                                    placeExpanded = false
+                                }
+                            )
+                            places.forEach { place ->
+                                DropdownMenuItem(
+                                    text = { Text(place.name) },
+                                    onClick = {
+                                        selectedPlaceId = place.id
+                                        placeExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 if (!revealed) {
                     // pasul 1: utilizatorul spune cât crede, fără să vadă propunerea
                     DurationField(
@@ -1037,7 +1087,8 @@ private fun ActivityDialog(
                                 guessMinutes = guessMinutes,
                                 estimate = estimate,
                                 note = note,
-                                tags = Tags.encode(Tags.parse(tagsInput))
+                                tags = Tags.encode(Tags.parse(tagsInput)),
+                                placeId = selectedPlaceId
                             )
                         )
                     },

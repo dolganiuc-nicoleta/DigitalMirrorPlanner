@@ -12,6 +12,7 @@ import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DayOff
 import md.utm.digitalmirror.data.entity.DailyActivity
+import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
 import md.utm.digitalmirror.data.repository.PlannerRepository
@@ -71,6 +72,11 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
 
     val categories: StateFlow<List<Category>> =
         repo.observeCategories()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // locurile pentru câmpul „Unde?” din formular
+    val places: StateFlow<List<Place>> =
+        AppDatabase.get(app).placeDao().observeAll()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val activities: StateFlow<List<Activity>> =
@@ -166,7 +172,8 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         guessMinutes: Int?,
         estimate: HistoryEstimator.Estimate?,
         note: String = "",
-        tags: String = ""
+        tags: String = "",
+        placeId: Long? = null
     ) = viewModelScope.launch {
         if (title.isBlank()) return@launch
         val activity = Activity(
@@ -181,7 +188,8 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             userEstimatedMinutes = plannedMinutes,
             actualMinutes = null,
             note = note.trim(),
-            tags = tags
+            tags = tags,
+            placeId = placeId
         )
         val id = repo.addActivity(activity)
         ActivityReminders.onActivityPlanned(app, activity.copy(id = id))
@@ -195,7 +203,8 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         plannedMinutes: Int?,
         startMinute: Int?,
         note: String = "",
-        tags: String = ""
+        tags: String = "",
+        placeId: Long? = null
     ) = viewModelScope.launch {
         if (title.isBlank()) return@launch
         // citim varianta proaspătă din baza de date, ca să nu pierdem timpul cronometrat între timp
@@ -206,7 +215,8 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             userEstimatedMinutes = plannedMinutes,
             plannedStartMinute = startMinute,
             note = note.trim(),
-            tags = tags
+            tags = tags,
+            placeId = placeId
         )
         repo.updateActivity(updated)
         ActivityReminders.onActivityPlanned(app, updated)
