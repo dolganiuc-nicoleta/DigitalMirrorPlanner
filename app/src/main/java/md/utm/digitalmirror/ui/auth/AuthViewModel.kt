@@ -1,6 +1,8 @@
 package md.utm.digitalmirror.ui.auth
 
 import android.app.Application
+import android.content.Context
+import md.utm.digitalmirror.R
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +67,25 @@ class AuthViewModel(private val app: Application) : AndroidViewModel(app) {
                         lockedUntil = System.currentTimeMillis() + throttle.remainingMillis(System.currentTimeMillis())
                     )
                 }
+            }
+        }
+    }
+
+    /** CF-03: autentificare cu Google. Nu se numără la încercările greșite. */
+    fun signInWithGoogle(activityContext: Context, onSuccess: () -> Unit) {
+        if (_state.value.loading) return
+        _state.update { it.copy(loading = true, error = null, info = null) }
+        viewModelScope.launch {
+            AuthRepository.signInWithGoogle(
+                activityContext,
+                app.getString(R.string.default_web_client_id)
+            ).onSuccess {
+                AuthPrefs.setSkipped(app, false)
+                _state.update { it.copy(loading = false) }
+                onSuccess()
+            }.onFailure { e ->
+                // mesaj gol = a închis fereastra de alegere a contului, nu e eroare
+                _state.update { it.copy(loading = false, error = e.message?.ifBlank { null }) }
             }
         }
     }

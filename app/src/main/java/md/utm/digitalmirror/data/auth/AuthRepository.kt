@@ -1,5 +1,14 @@
 package md.utm.digitalmirror.data.auth
 
+import android.content.Context
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.FirebaseAuth
@@ -37,6 +46,36 @@ object AuthRepository {
 
     suspend fun signIn(email: String, password: String): Result<Unit> =
         run { auth.signInWithEmailAndPassword(email.trim(), password).await() }
+
+    /**
+     * CF-03: autentificare cu Google. [activityContext] trebuie să fie Activity (apare fereastra de alegere a contului).
+     * Dacă utilizatorul închide fereastra, mesajul din eroare e gol și nu afișăm nimic.
+     */
+    suspend fun signInWithGoogle(activityContext: Context, webClientId: String): Result<Unit> =
+        try {
+            val option = GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(false)
+                .setServerClientId(webClientId)
+                .build()
+            val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+            val credential = CredentialManager.create(activityContext)
+                .getCredential(activityContext, request).credential
+            if (credential is CustomCredential &&
+                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+            ) {
+                val idToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null)).await()
+                Result.success(Unit)
+            } else {
+                Result.failure(AuthException("Nu am putut folosi contul Google ales."))
+            }
+        } catch (e: GetCredentialCancellationException) {
+            Result.failure(AuthException("", e))
+        } catch (e: NoCredentialException) {
+            Result.failure(AuthException("Nu am găsit niciun cont Google pe telefon. Adaugă unul în Setările telefonului.", e))
+        } catch (e: Exception) {
+            Result.failure(AuthException(message(e), e))
+        }
 
     suspend fun sendPasswordReset(email: String): Result<Unit> =
         run { auth.sendPasswordResetEmail(email.trim()).await() }

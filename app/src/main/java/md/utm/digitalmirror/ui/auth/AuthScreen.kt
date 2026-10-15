@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -33,6 +34,7 @@ fun AuthScreen(
     vm: AuthViewModel = viewModel()
 ) {
     val state by vm.state.collectAsState()
+    val context = LocalContext.current   // Activity, necesar pentru fereastra Google
 
     // numărătoarea inversă a pauzei de după prea multe încercări greșite
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -169,6 +171,18 @@ fun AuthScreen(
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
             }
+
+            Text(
+                "sau",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+            OutlinedButton(
+                onClick = { vm.signInWithGoogle(context, onSuccess = onDone) },
+                enabled = !state.loading,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            ) { Text("Continuă cu Google") }
 
             if (allowSkip) {
                 Spacer(Modifier.height(8.dp))
