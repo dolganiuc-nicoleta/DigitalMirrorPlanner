@@ -25,6 +25,9 @@ interface AvailabilityDao {
     @Delete
     suspend fun deleteRule(rule: AvailabilityRule)
 
+    @Query("UPDATE availability_rule SET placeId = NULL WHERE placeId = :placeId")
+    suspend fun unlinkPlace(placeId: Long)
+
     @Query("SELECT * FROM day_off ORDER BY date")
     fun observeDaysOff(): Flow<List<DayOff>>
 

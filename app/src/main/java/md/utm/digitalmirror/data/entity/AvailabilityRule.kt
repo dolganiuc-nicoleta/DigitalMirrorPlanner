@@ -16,5 +16,6 @@ data class AvailabilityRule(
     val startMinute: Int,            // minute de la miezul nopții
     val endMinute: Int,
     val travelBeforeMinutes: Int,
-    val travelAfterMinutes: Int
+    val travelAfterMinutes: Int,
+    val placeId: Long? = null        // v15 · unde se ține blocul (din „Locuri”), pentru calculul drumului
 )

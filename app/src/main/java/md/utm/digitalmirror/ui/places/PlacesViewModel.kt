@@ -39,6 +39,7 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
     private val dao = db.placeDao()
     private val presenceDao = db.presenceLogDao()
     private val routeDao = db.travelRouteDao()
+    private val availabilityDao = db.availabilityDao()
     private val travel = TravelRepository(app)
 
     private val _route = MutableStateFlow(RouteUi())
@@ -80,6 +81,7 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
     fun delete(place: Place) = viewModelScope.launch {
         db.withTransaction {
             dao.unlinkActivities(place.id)
+            availabilityDao.unlinkPlace(place.id)
             presenceDao.deleteForPlace(place.id)
             routeDao.deleteForPlace(place.id)
             dao.delete(place.id)

@@ -22,10 +22,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.auth.AuthRepository
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.AvailabilityRule
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.ui.components.DurationField
 import md.utm.digitalmirror.ui.components.formatDuration
@@ -50,6 +52,7 @@ fun SettingsScreen(
     val categories by vm.categories.collectAsState()
     val rules by vm.rules.collectAsState()
     val daysOff by vm.daysOff.collectAsState()
+    val places by vm.places.collectAsState()
 
     // null = dialogul e închis; AvailabilityRule cu id 0 = bloc nou
     var editingRule by remember { mutableStateOf<AvailabilityRule?>(null) }
@@ -322,6 +325,7 @@ fun SettingsScreen(
                                         "${Availability.daysLabel(rule.daysMask)} · " +
                                                 "${formatClock(rule.startMinute)}–${formatClock(rule.endMinute)}"
                                     )
+                                    places.find { it.id == rule.placeId }?.let { Hint("la ${it.name}") }
                                     if (rule.travelBeforeMinutes > 0 || rule.travelAfterMinutes > 0) {
                                         Hint(
                                             "drum: " + listOfNotNull(
@@ -583,6 +587,10 @@ fun SettingsScreen(
     editingRule?.let { rule ->
         RuleDialog(
             initial = rule,
+            places = places,
+            homePlaceId = vm.homePlaceId(),
+            modeLabel = vm.travelModeLabel(),
+            onEstimate = { fromId, placeId -> vm.estimateBlockTravel(fromId, placeId) },
             onDismiss = { editingRule = null },
             onSave = {
                 vm.saveRule(it)
@@ -706,6 +714,36 @@ private fun ReminderTimeDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaceChoice(
+    label: String,
+    none: String,
+    places: List<Place>,
+    selectedId: Long?,
+    onSelect: (Long?) -> Unit,
+    allowNone: Boolean = true
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        OutlinedTextField(
+            value = places.find { it.id == selectedId }?.name ?: none,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (allowNone) {
+                DropdownMenuItem(text = { Text(none) }, onClick = { onSelect(null); expanded = false })
+            }
+            places.forEach { place ->
+                DropdownMenuItem(text = { Text(place.name) }, onClick = { onSelect(place.id); expanded = false })
+            }
+        }
+    }
+}
+
 private fun formatClock(minute: Int): String =
     if (minute >= 24 * 60) "24:00" else "%02d:%02d".format(minute / 60, minute % 60)
 
@@ -713,6 +751,10 @@ private fun formatClock(minute: Int): String =
 @Composable
 private fun RuleDialog(
     initial: AvailabilityRule,
+    places: List<Place>,
+    homePlaceId: Long?,
+    modeLabel: String,
+    onEstimate: suspend (fromId: Long, placeId: Long) -> Result<Pair<Int, Int>>,
     onDismiss: () -> Unit,
     onSave: (AvailabilityRule) -> Unit
 ) {
@@ -724,6 +766,13 @@ private fun RuleDialog(
     var travelAfter by remember { mutableStateOf(initial.travelAfterMinutes.takeIf { it > 0 }) }
     var pickingStart by remember { mutableStateOf(false) }
     var pickingEnd by remember { mutableStateOf(false) }
+
+    // locul blocului și de unde pleci, pentru calculul automat al drumului
+    var placeId by remember { mutableStateOf(initial.placeId) }
+    var fromId by remember { mutableStateOf(homePlaceId?.takeIf { id -> places.any { it.id == id } }) }
+    var calculating by remember { mutableStateOf(false) }
+    var travelMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     val valid = title.isNotBlank() && daysMask != 0 && end > start
 
@@ -765,6 +814,51 @@ private fun RuleDialog(
                 }
                 if (end <= start) Hint("Ora de sfârșit trebuie să fie după cea de început.")
 
+                if (places.isNotEmpty()) {
+                    PlaceChoice(
+                        label = "Unde se ține? (opțional)",
+                        none = "fără loc",
+                        places = places,
+                        selectedId = placeId,
+                        onSelect = { placeId = it; travelMessage = null }
+                    )
+                }
+                if (places.size >= 2 && placeId != null) {
+                    PlaceChoice(
+                        label = "Pleci de la",
+                        none = "alege un loc",
+                        places = places.filter { it.id != placeId },
+                        selectedId = fromId,
+                        onSelect = { fromId = it; travelMessage = null },
+                        allowNone = false
+                    )
+                    val origin = fromId
+                    val target = placeId
+                    OutlinedButton(
+                        enabled = origin != null && target != null && origin != target && !calculating,
+                        onClick = {
+                            if (origin != null && target != null) {
+                                calculating = true
+                                travelMessage = null
+                                scope.launch {
+                                    onEstimate(origin, target)
+                                        .onSuccess { (before, after) ->
+                                            travelBefore = before
+                                            travelAfter = after
+                                            travelMessage = "Calculat ($modeLabel). Poți modifica minutele."
+                                        }
+                                        .onFailure { travelMessage = it.message ?: "Ceva nu a mers." }
+                                    calculating = false
+                                }
+                            }
+                        }
+                    ) {
+                        if (calculating) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text("Calculează drumul")
+                    }
+                    travelMessage?.let { Hint(it) }
+                }
+
                 DurationField(
                     label = "Drum până acolo (opțional)",
                     minutes = travelBefore,
@@ -791,7 +885,8 @@ private fun RuleDialog(
                             startMinute = start,
                             endMinute = end,
                             travelBeforeMinutes = travelBefore ?: 0,
-                            travelAfterMinutes = travelAfter ?: 0
+                            travelAfterMinutes = travelAfter ?: 0,
+                            placeId = placeId
                         )
                     )
                 }

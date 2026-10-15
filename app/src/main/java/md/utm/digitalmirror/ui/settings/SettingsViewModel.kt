@@ -13,6 +13,9 @@ import md.utm.digitalmirror.data.backup.BackupManager
 import md.utm.digitalmirror.data.entity.AvailabilityRule
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DayOff
+import md.utm.digitalmirror.data.entity.Place
+import md.utm.digitalmirror.data.prefs.TravelPrefs
+import md.utm.digitalmirror.data.travel.TravelRepository
 import md.utm.digitalmirror.data.export.DataExporter
 import md.utm.digitalmirror.data.health.HealthSync
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
@@ -156,6 +159,32 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
     fun saveRule(rule: AvailabilityRule) = viewModelScope.launch {
         if (rule.id == 0L) availabilityDao.insertRule(rule) else availabilityDao.updateRule(rule)
     }
+
+    // locurile și drumul până la blocurile fixe
+    val places: StateFlow<List<Place>> =
+        db.placeDao().observeAll()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val travel = TravelRepository(app)
+
+    fun homePlaceId(): Long? = TravelPrefs.homePlaceId(app)
+
+    /**
+     * Drumul de la locul de plecare până la bloc și înapoi, în minute (înainte, după),
+     * cu modul de deplasare ales în Locuri. Se reține locul de plecare pentru data viitoare.
+     */
+    suspend fun estimateBlockTravel(fromId: Long, blockPlaceId: Long): Result<Pair<Int, Int>> {
+        val all = places.value
+        val from = all.find { it.id == fromId } ?: return Result.failure(IllegalStateException("Alege de unde pleci."))
+        val to = all.find { it.id == blockPlaceId } ?: return Result.failure(IllegalStateException("Alege locul blocului."))
+        TravelPrefs.setHomePlaceId(app, from.id)
+        val mode = TravelPrefs.mode(app)
+        val there = travel.estimate(from, to, mode).getOrElse { return Result.failure(it) }
+        val back = travel.estimate(to, from, mode).getOrElse { return Result.failure(it) }
+        return Result.success(there.estimate.minutes to back.estimate.minutes)
+    }
+
+    fun travelModeLabel(): String = TravelPrefs.mode(app).label
 
     fun deleteRule(rule: AvailabilityRule) = viewModelScope.launch { availabilityDao.deleteRule(rule) }
 
