@@ -2,6 +2,7 @@ package md.utm.digitalmirror.ui.week
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +21,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import md.utm.digitalmirror.data.entity.WeekTask
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.WeekPlanner
+import md.utm.digitalmirror.domain.WeekTaskParser
 import md.utm.digitalmirror.ui.components.formatDuration
 import java.time.LocalDate
 
@@ -51,6 +53,7 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
     var pinning by remember { mutableStateOf<WeekTask?>(null) }
     var deadlineFor by remember { mutableStateOf<WeekTask?>(null) }
     var deleting by remember { mutableStateOf<WeekTask?>(null) }
+    var selectedDay by rememberSaveable { mutableIntStateOf(-1) }      // -1 = toate zilele
 
     Scaffold(
         topBar = {
@@ -111,7 +114,21 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
             item { ChanceCard(state) }
 
             // --- grila zilelor ---
-            item { DayGrid(state.days) }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    DayGrid(
+                        days = state.days,
+                        selected = selectedDay,
+                        onSelect = { selectedDay = if (selectedDay == it) -1 else it }
+                    )
+                    Text(
+                        "Bara arată cât din zi e plin: verde = e loc, galben = aproape plin, roșu = prea mult. " +
+                                "Apasă o zi ca să vezi ce e planificat în ea.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             // --- scenariu ---
             item {
@@ -199,22 +216,57 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
                 }
             }
 
-            // --- sesiunile propuse, pe zile ---
-            if (state.sessions.isNotEmpty()) {
-                item { Text("Sesiunile propuse", style = MaterialTheme.typography.titleMedium) }
-                val byDay = state.sessions.groupBy { it.date }.toSortedMap()
+            // --- sesiunile propuse: toate zilele, sau doar ziua apăsată în grilă ---
+            item {
+                val cell = state.days.getOrNull(selectedDay)
+                Text(
+                    if (cell == null) "Sesiunile propuse"
+                    else "${dayName(cell.date).replaceFirstChar { it.uppercase() }}, ${shortDate(cell.date)}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (cell != null) {
+                    Text(
+                        when {
+                            cell.dayOff -> "Zi liberă: nu planific nimic în ea."
+                            cell.budget <= 0 -> "Planificat ${formatDuration(cell.minutes)}."
+                            else -> "Planificat ${formatDuration(cell.minutes)} din cât reușești de obicei (${formatDuration(cell.budget)})."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            val shown = state.sessions.filter { selectedDay < 0 || it.date == state.days.getOrNull(selectedDay)?.date }
+            if (shown.isEmpty()) {
+                item {
+                    Text(
+                        if (selectedDay < 0) "Nicio sesiune propusă încă. Adaugă o sarcină mai sus."
+                        else "Nicio sesiune de la sarcinile săptămânii în ziua asta.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                val byDay = shown.groupBy { it.date }.toSortedMap()
                 byDay.forEach { (date, list) ->
                     item(key = "day-$date") {
-                        Column {
-                            Text(
-                                "${dayName(date).replaceFirstChar { it.uppercase() }}, ${shortDate(date)}",
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            list.forEach { s ->
-                                Text(
-                                    "${clock(s.startMinute)}–${clock(s.endMinute)}  ${s.title}" + if (s.pinned) "  📌" else "",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (selectedDay < 0) {
+                                    Text(
+                                        "${dayName(date).replaceFirstChar { it.uppercase() }}, ${shortDate(date)}",
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                list.forEach { s ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            if (s.startMinute >= 0) "${clock(s.startMinute)}–${clock(s.endMinute)}" else "fără oră",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.width(96.dp)
+                                        )
+                                        Text(s.title + if (s.pinned) "  📌" else "", modifier = Modifier.weight(1f))
+                                    }
+                                }
                             }
                         }
                     }
@@ -317,7 +369,7 @@ private fun ChanceCard(state: WeekViewModel.UiState) {
 }
 
 @Composable
-private fun DayGrid(days: List<WeekViewModel.DayCell>) {
+private fun DayGrid(days: List<WeekViewModel.DayCell>, selected: Int, onSelect: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         days.forEachIndexed { index, cell ->
             val ratio = if (cell.budget <= 0) 1f else (cell.minutes.toFloat() / cell.budget)
@@ -328,7 +380,11 @@ private fun DayGrid(days: List<WeekViewModel.DayCell>) {
                 else -> MaterialTheme.colorScheme.primary
             }
             Column(
-                Modifier.weight(1f),
+                Modifier.weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (index == selected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent)
+                    .clickable { onSelect(index) }
+                    .padding(vertical = 6.dp, horizontal = 2.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -436,14 +492,16 @@ private fun NewTaskDialog(
     onDismiss: () -> Unit,
     onSave: (String, Int, Int, LocalDate?) -> Unit
 ) {
-    var title by rememberSaveable { mutableStateOf("") }
-    var hoursText by rememberSaveable { mutableStateOf("") }
-    var session by rememberSaveable { mutableIntStateOf(90) }
-    var deadlineIndex by rememberSaveable { mutableIntStateOf(-1) }       // -1 = fără termen
+    var text by rememberSaveable { mutableStateOf("") }
+    var sessionOverride by rememberSaveable { mutableIntStateOf(0) }        // 0 = din text sau 90 min
+    var deadlineOverride by rememberSaveable { mutableIntStateOf(-2) }      // -2 = din text, -1 = fără termen
 
-    val hours = hoursText.replace(',', '.').toDoubleOrNull()
-    val minutes = hours?.let { (it * 60).toInt() } ?: 0
-    val valid = title.isNotBlank() && minutes >= 15
+    val parsed = remember(text) { WeekTaskParser.parse(text) }
+    val title = parsed.title
+    val minutes = parsed.totalMinutes ?: 0
+    val session = if (sessionOverride > 0) sessionOverride else parsed.sessionMinutes ?: 90
+    val deadlineIndex = if (deadlineOverride != -2) deadlineOverride else parsed.deadlineDay ?: -1
+    val valid = title != null && minutes >= 15
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -451,36 +509,51 @@ private fun NewTaskDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    value = title, onValueChange = { title = it },
-                    label = { Text("Ce ai de făcut?") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                    value = text, onValueChange = { text = it },
+                    label = { Text("Ce ai de făcut?") },
+                    placeholder = { Text("Lucru la licență 6h, până vineri") },
+                    minLines = 2, modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = hoursText, onValueChange = { hoursText = it },
-                    label = { Text("Câte ore în total") }, placeholder = { Text("6 sau 1,5") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                Text(
+                    "Scrie liber: titlul, cât durează în total și, dacă vrei, „sesiuni de 90 min” și „până vineri”.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text("Într-o sesiune", style = MaterialTheme.typography.labelMedium)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(30, 60, 90, 120).forEach { m ->
-                        FilterChip(selected = session == m, onClick = { session = m }, label = { Text(formatDuration(m)) })
+
+                // ce am înțeles, ca să se vadă înainte de salvare
+                if (text.isNotBlank()) {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        Column(Modifier.padding(10.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(title ?: "Titlul lipsește", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (minutes > 0) "${formatDuration(minutes)} în total" else "Cât durează în total? Scrie de exemplu 6h",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (minutes > 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.error
+                            )
+                            Text("Sesiuni de ${formatDuration(session)}", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                if (deadlineIndex >= 0) "Termen: ${DAY_NAMES[deadlineIndex]}" else "Fără termen",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
-                Text("Termen (opțional)", style = MaterialTheme.typography.labelMedium)
+
+                Text("Schimbă sesiunea", style = MaterialTheme.typography.labelMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(selected = deadlineIndex == -1, onClick = { deadlineIndex = -1 }, label = { Text("Fără") })
-                    (0..4).forEach { i ->
+                    (listOf(30, 60, 90, 120) + session).distinct().sorted().forEach { m ->
+                        FilterChip(selected = session == m, onClick = { sessionOverride = m }, label = { Text(formatDuration(m)) })
+                    }
+                }
+                Text("Schimbă termenul", style = MaterialTheme.typography.labelMedium)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = deadlineIndex == -1, onClick = { deadlineOverride = -1 }, label = { Text("Fără") })
+                    (0..6).forEach { i ->
                         FilterChip(
-                            selected = deadlineIndex == i, onClick = { deadlineIndex = i },
+                            selected = deadlineIndex == i, onClick = { deadlineOverride = i },
                             label = { Text(Availability.shortDayName(i)) }
                         )
                     }
-                }
-                if (!valid) {
-                    Text(
-                        "Scrie ce ai de făcut și un total de cel puțin 15 minute (0,25 ore).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         },
@@ -488,7 +561,7 @@ private fun NewTaskDialog(
             TextButton(
                 enabled = valid,
                 onClick = {
-                    onSave(title, minutes, session, if (deadlineIndex >= 0) weekStart.plusDays(deadlineIndex.toLong()) else null)
+                    onSave(title!!, minutes, session, if (deadlineIndex >= 0) weekStart.plusDays(deadlineIndex.toLong()) else null)
                 }
             ) { Text("Adaugă") }
         },

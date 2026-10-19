@@ -249,7 +249,7 @@ object PlanParser {
         return null
     }
 
-    private fun findDuration(folded: String): Pair<Int, IntRange>? {
+    internal fun findDuration(folded: String): Pair<Int, IntRange>? {
         DUR_HOURS_MIN.find(folded)?.let {
             val minutes = it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt()
             if (minutes > 0) return minutes to it.range
@@ -274,7 +274,7 @@ object PlanParser {
 
     // ---- titlul ----
 
-    private fun cleanTitle(raw: String): String? {
+    internal fun cleanTitle(raw: String): String? {
         var words = raw.replace(Regex("""\s+"""), " ").trim().trim('-', '–', '—', ':', '.', ',', ';', '!', '?', ' ')
             .split(' ').filter { it.isNotEmpty() }.toMutableList()
 

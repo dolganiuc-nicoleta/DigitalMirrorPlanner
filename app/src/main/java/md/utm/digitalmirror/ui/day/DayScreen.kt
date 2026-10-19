@@ -164,6 +164,11 @@ fun DayScreen(
                         if (isToday) "Nicio activitate pentru astăzi"
                         else "Nicio activitate în această zi"
                     )
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onPlan) { Text("Plan rapid") }
+                        OutlinedButton(onClick = onPlanWeek) { Text("Săptămâna") }
+                    }
                     // reflecția se poate face și într-o zi fără activități
                     if (canClose) {
                         Spacer(Modifier.height(16.dp))
@@ -183,6 +188,14 @@ fun DayScreen(
                 contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // scurtături vizibile către planificare
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onPlan, modifier = Modifier.weight(1f)) { Text("Plan rapid") }
+                        OutlinedButton(onClick = onPlanWeek, modifier = Modifier.weight(1f)) { Text("Săptămâna") }
+                    }
+                }
+
                 // somnul și pașii zilei
                 health?.let { item { HealthSummary(it) } }
 
