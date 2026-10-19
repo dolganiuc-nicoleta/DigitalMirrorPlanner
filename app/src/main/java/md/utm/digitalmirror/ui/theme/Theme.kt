@@ -90,10 +90,30 @@ private val AppShapes = Shapes(
 @Composable
 fun DigitalMirrorPlannerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    accent: Accent = ThemeSettings.accent,
     content: @Composable () -> Unit
 ) {
+    // restul paletei rămâne la fel; se schimbă doar culoarea principală aleasă de utilizator
+    val colors = if (darkTheme) {
+        DarkColors.copy(
+            primary = accent.nightPrimary,
+            onPrimary = accent.dark,
+            primaryContainer = accent.dark,
+            onPrimaryContainer = accent.nightPrimary,
+            secondaryContainer = accent.dark,
+            onSecondaryContainer = accent.nightPrimary
+        )
+    } else {
+        LightColors.copy(
+            primary = accent.primary,
+            primaryContainer = accent.soft,
+            onPrimaryContainer = accent.dark,
+            secondaryContainer = accent.soft,
+            onSecondaryContainer = accent.dark
+        )
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = colors,
         typography = AppTypography,
         shapes = AppShapes,
         content = content

@@ -20,7 +20,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
-import android.util.Log
+
 /**
  * Singura clasă care vorbește cu Firebase Authentication (CF-01, CF-02, CF-05).
  * Restul aplicației nu știe de Firebase: primește doar [Result] cu mesaj în română.
@@ -31,6 +31,9 @@ object AuthRepository {
 
     /** E-mailul utilizatorului conectat, sau null dacă nu e autentificat. */
     val email: String? get() = auth.currentUser?.email
+
+    /** Numele din contul Google, dacă există. */
+    val displayName: String? get() = auth.currentUser?.displayName
 
     val isSignedIn: Boolean get() = auth.currentUser != null
 
@@ -72,10 +75,8 @@ object AuthRepository {
         } catch (e: GetCredentialCancellationException) {
             Result.failure(AuthException("", e))
         } catch (e: NoCredentialException) {
-            Log.e("GoogleSignIn", "NoCredentialException: ${e.message}", e)
             Result.failure(AuthException("Nu am găsit niciun cont Google pe telefon. Adaugă unul în Setările telefonului.", e))
         } catch (e: Exception) {
-            Log.e("GoogleSignIn", "Eroare: ${e.javaClass.simpleName}: ${e.message}", e)
             Result.failure(AuthException(message(e), e))
         }
 

@@ -6,7 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +33,7 @@ import md.utm.digitalmirror.ui.goals.GoalsScreen
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import md.utm.digitalmirror.ui.onboarding.OnboardingScreen
 import md.utm.digitalmirror.ui.places.PlacesScreen
+import md.utm.digitalmirror.ui.profile.ProfileScreen
 import md.utm.digitalmirror.ui.plan.PlanScreen
 import md.utm.digitalmirror.ui.report.ReportScreen
 import md.utm.digitalmirror.ui.settings.SettingsScreen
@@ -50,6 +51,7 @@ object Routes {
     const val PLAN = "plan"
     const val WEEK = "week"
     const val SETTINGS = "settings"
+    const val PROFILE = "profile"
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
     const val AUTH = "auth"
@@ -68,7 +70,7 @@ private val tabs = listOf(
     Tab(Routes.STATS, "Statistici", Icons.Filled.BarChart),
     Tab(Routes.GOALS, "Obiective", Icons.Filled.Flag),
     Tab(Routes.CAPSULE, "Capsulă", Icons.Filled.Email),
-    Tab(Routes.SETTINGS, "Setări", Icons.Filled.Settings)
+    Tab(Routes.PROFILE, "Profil", Icons.Filled.Person)
 )
 
 @Composable
@@ -197,9 +199,16 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 CapsuleScreen()
             }
 
+            composable(Routes.PROFILE) {
+                ProfileScreen(
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                    onOpenAuth = { navController.navigate(Routes.AUTH) }
+                )
+            }
+
             composable(Routes.SETTINGS) {
                 SettingsScreen(
-                    onOpenAuth = { navController.navigate(Routes.AUTH) },
+                    onBack = { navController.popBackStack() },
                     onOpenPlaces = { navController.navigate(Routes.PLACES) }
                 )
             }

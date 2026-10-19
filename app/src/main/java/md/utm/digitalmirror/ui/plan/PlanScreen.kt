@@ -218,14 +218,14 @@ private fun ProposalCard(
     }
 }
 
-/** „Loc: Acasă ▾” — se schimbă cu un tap; „fără loc” îl scoate. */
+/** „Loc: Acasă · schimbă” — se schimbă cu un tap; „fără loc” îl scoate. */
 @Composable
 private fun PlacePicker(places: List<Place>, selectedId: Long?, onSelect: (Long?) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val name = places.firstOrNull { it.id == selectedId }?.name
     Box {
         TextButton(onClick = { open = true }, contentPadding = PaddingValues(0.dp)) {
-            Text("Loc: ${name ?: "fără loc"} ▾", style = MaterialTheme.typography.bodySmall)
+            Text("Loc: ${name ?: "fără loc"} · schimbă", style = MaterialTheme.typography.bodySmall)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text("fără loc") }, onClick = { onSelect(null); open = false })

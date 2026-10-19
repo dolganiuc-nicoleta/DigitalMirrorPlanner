@@ -37,15 +37,11 @@ import md.utm.digitalmirror.data.health.HealthSync
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onOpenAuth: () -> Unit = {},
+    onBack: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     vm: SettingsViewModel = viewModel()
 ) {
     val context = LocalContext.current
-
-    // contul: e-mailul se schimbă singur la autentificare și la ieșire din cont
-    val accountEmail by AuthRepository.emailFlow().collectAsState(initial = AuthRepository.email)
-    var confirmSignOut by remember { mutableStateOf(false) }
 
     val reminderEnabled by vm.reminderEnabled.collectAsState()
     val reminderMinute by vm.reminderMinute.collectAsState()
@@ -137,34 +133,18 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Setări") }) }
+        topBar = {
+            TopAppBar(
+                title = { Text("Setări") },
+                navigationIcon = { TextButton(onClick = onBack) { Text("Înapoi") } }
+            )
+        }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-
-            // 0. contul (CF-02, CF-04, CF-05)
-            item { SectionTitle("Cont") }
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (accountEmail != null) {
-                            Text("✓ Autentificat ca $accountEmail")
-                            Hint("Datele rămân pe telefon. La ieșirea din cont nu se șterge nimic.")
-                            OutlinedButton(onClick = { confirmSignOut = true }) { Text("Ieși din cont") }
-                        } else {
-                            Text("Folosești aplicația fără cont")
-                            Hint("Toate datele sunt doar pe acest telefon. Cu un cont ești autentificat și pe alt telefon.")
-                            Button(onClick = onOpenAuth) { Text("Autentifică-te sau creează cont") }
-                        }
-                    }
-                }
-            }
 
             // 1. reminder de seară
             item {
@@ -528,23 +508,6 @@ fun SettingsScreen(
     }
 
     // dialoguri
-    if (confirmSignOut) {
-        AlertDialog(
-            onDismissRequest = { confirmSignOut = false },
-            title = { Text("Ieși din cont?") },
-            text = { Text("Activitățile și celelalte date rămân pe telefon. Te poți autentifica oricând din nou.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmSignOut = false
-                    AuthRepository.signOut()
-                }) { Text("Ieși din cont") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmSignOut = false }) { Text("Anulează") }
-            }
-        )
-    }
-
     if (showTimePicker) {
         ReminderTimeDialog(
             initialMinute = reminderMinute,

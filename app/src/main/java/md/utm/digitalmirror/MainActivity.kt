@@ -21,6 +21,7 @@ import md.utm.digitalmirror.reminder.ReminderNotifications
 import md.utm.digitalmirror.reminder.ReminderScheduler
 import md.utm.digitalmirror.ui.navigation.AppNavigation
 import md.utm.digitalmirror.ui.theme.DigitalMirrorPlannerTheme
+import md.utm.digitalmirror.ui.theme.ThemeSettings
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +42,8 @@ class MainActivity : ComponentActivity() {
 
         // true dacă aplicația a fost deschisă din notificarea capsulei
         val openCapsule = intent.getBooleanExtra(CapsuleReminders.EXTRA_OPEN_CAPSULE, false)
+
+        ThemeSettings.load(this)
 
         setContent {
             DigitalMirrorPlannerTheme {
