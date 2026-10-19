@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.domain.DayPlanner
 import md.utm.digitalmirror.ui.components.formatDuration
 import java.time.Instant
@@ -25,6 +26,7 @@ import java.util.Locale
 @Composable
 fun PlanScreen(onBack: () -> Unit, vm: PlanViewModel = viewModel()) {
     val state by vm.state.collectAsState()
+    val places by vm.places.collectAsState()
     val context = LocalContext.current
 
     var text by rememberSaveable { mutableStateOf("") }
@@ -85,6 +87,8 @@ fun PlanScreen(onBack: () -> Unit, vm: PlanViewModel = viewModel()) {
                         ProposalCard(
                             proposal = p,
                             postponeDate = state.date.plusDays(1),
+                            places = places,
+                            onPlace = { vm.setPlace(p.index, it) },
                             onInclude = { vm.setIncluded(p.index, it) },
                             onUseHistory = { vm.useHistoryMinutes(p.index) }
                         )
@@ -155,6 +159,8 @@ private fun Summary(state: PlanViewModel.UiState) {
 private fun ProposalCard(
     proposal: PlanViewModel.Proposal,
     postponeDate: LocalDate,
+    places: List<Place>,
+    onPlace: (Long?) -> Unit,
     onInclude: (Boolean) -> Unit,
     onUseHistory: () -> Unit
 ) {
@@ -188,6 +194,10 @@ private fun ProposalCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                if (places.isNotEmpty()) {
+                    PlacePicker(places, proposal.placeId, onPlace)
+                }
+
                 if (placement.conflict) {
                     Text(
                         "Ora cerută se suprapune cu altceva din zi.",
@@ -203,6 +213,24 @@ private fun ProposalCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/** „Loc: Acasă ▾” — se schimbă cu un tap; „fără loc” îl scoate. */
+@Composable
+private fun PlacePicker(places: List<Place>, selectedId: Long?, onSelect: (Long?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val name = places.firstOrNull { it.id == selectedId }?.name
+    Box {
+        TextButton(onClick = { open = true }, contentPadding = PaddingValues(0.dp)) {
+            Text("Loc: ${name ?: "fără loc"} ▾", style = MaterialTheme.typography.bodySmall)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("fără loc") }, onClick = { onSelect(null); open = false })
+            places.forEach { place ->
+                DropdownMenuItem(text = { Text(place.name) }, onClick = { onSelect(place.id); open = false })
             }
         }
     }

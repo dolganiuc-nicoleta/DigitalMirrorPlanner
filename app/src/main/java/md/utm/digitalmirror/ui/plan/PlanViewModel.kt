@@ -5,18 +5,22 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.CategoryGuess
 import md.utm.digitalmirror.domain.DayPlanner
 import md.utm.digitalmirror.domain.HistoryEstimator
+import md.utm.digitalmirror.domain.PlaceGuess
 import md.utm.digitalmirror.domain.PlanParser
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.TitleKey
@@ -43,6 +47,7 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         val historyMinutes: Int?,                 // ce arată istoricul, când diferă mult de durata spusă
         val dayPart: PlanParser.DayPart?,
         val placement: DayPlanner.Placement,
+        val placeId: Long?,                       // locul ghicit din text/istoric sau ales de utilizator
         val include: Boolean
     )
 
@@ -60,6 +65,10 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
     private val repo = PlannerRepository(db.activityDao(), db.categoryDao(), db.workSessionDao())
     private val analysisOn = AnalysisPrefs.isEnabled(app)
 
+    /** Locurile salvate, pentru lista „Loc” de la fiecare activitate. */
+    val places: StateFlow<List<Place>> = db.placeDao().observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
 
@@ -70,18 +79,22 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         val categories: List<Category>,
         val known: List<CategoryGuess.Known>,
         val history: List<HistoryEstimator.Sample>,
-        val slotHistory: Map<Long, List<SlotRecommender.Outcome>>
+        val slotHistory: Map<Long, List<SlotRecommender.Outcome>>,
+        val placeList: List<PlaceGuess.Named>,
+        val placeHistory: List<PlaceGuess.Known>
     )
     private var work: Work? = null
     private var dateOverride: LocalDate? = null
     private val minutesOverride = mutableMapOf<Int, Int>()
     private val excluded = mutableSetOf<Int>()
+    private val placeOverride = mutableMapOf<Int, Long?>()   // alegerea explicită, inclusiv „fără loc”
 
     /** Textul nou: analiză de la zero. */
     fun analyze(text: String) = viewModelScope.launch {
         _state.value = _state.value.copy(working = true)
         minutesOverride.clear()
         excluded.clear()
+        placeOverride.clear()
 
         val today = LocalDate.now()
         val parsed = PlanParser.parse(text, today)
@@ -99,7 +112,14 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
             .distinct()
         val slotHistory = categoryIds.associateWith { repo.slotHistory(it) }
 
-        work = Work(text, parsed, categories, known, history, slotHistory)
+        // locuri și istoricul lor (cele mai noi activități primele)
+        val placeList = db.placeDao().getAll().map { PlaceGuess.Named(it.id, it.name) }
+        val placeHistory = activities.sortedByDescending { it.id }.mapNotNull { a ->
+            val placeId = a.placeId ?: return@mapNotNull null
+            PlaceGuess.Known(a.titleKey ?: TitleKey.of(a.title), placeId)
+        }
+
+        work = Work(text, parsed, categories, known, history, slotHistory, placeList, placeHistory)
         recompute()
     }
 
@@ -113,6 +133,14 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         if (include) excluded.remove(index) else excluded.add(index)
         _state.value = _state.value.copy(
             proposals = _state.value.proposals?.map { if (it.index == index) it.copy(include = include) else it }
+        )
+    }
+
+    /** Locul ales de utilizator pentru o activitate; null = fără loc. */
+    fun setPlace(index: Int, placeId: Long?) {
+        placeOverride[index] = placeId
+        _state.value = _state.value.copy(
+            proposals = _state.value.proposals?.map { if (it.index == index) it.copy(placeId = placeId) else it }
         )
     }
 
@@ -190,6 +218,8 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
                     historyMinutes = p.historyMinutes,
                     dayPart = p.draft.dayPart,
                     placement = placements[index],
+                    placeId = if (index in placeOverride) placeOverride[index]
+                    else PlaceGuess.guess(p.draft.title, w.placeList, w.placeHistory),
                     include = index !in excluded
                 )
             },
@@ -250,7 +280,8 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
                 estimatedLowMinutes = estimate?.lowMinutes,
                 estimatedHighMinutes = estimate?.highMinutes,
                 userEstimatedMinutes = p.minutes,
-                actualMinutes = null
+                actualMinutes = null,
+                placeId = p.placeId
             )
             val id = repo.addActivity(activity)
             ActivityReminders.onActivityPlanned(app, activity.copy(id = id))
