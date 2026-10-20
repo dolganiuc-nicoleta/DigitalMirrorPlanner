@@ -33,6 +33,7 @@ import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
+import md.utm.digitalmirror.domain.TimelineGaps
 import md.utm.digitalmirror.ui.components.DurationField
 import md.utm.digitalmirror.ui.components.formatDuration
 import kotlin.math.abs
@@ -70,6 +71,7 @@ fun DayScreen(
     val isDayOff by vm.isDayOff.collectAsState()
     val legs by vm.legs.collectAsState()
     val travelMode by vm.travelMode.collectAsState()
+    val weekDots by vm.weekDots.collectAsState()
 
     // comutatorul din Setări; se recitește de fiecare dată când ecranul reintră în compoziție
     val context = LocalContext.current
@@ -81,6 +83,7 @@ fun DayScreen(
     val activeTag = tagFilter?.takeIf { it in dayTags }
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var addAtMinute by remember { mutableStateOf<Int?>(null) }       // ora completată când apeși „+ Adaugă” într-un spațiu liber
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
     var postponing by remember { mutableStateOf<Activity?>(null) }   // activitatea pentru care alegem o zi
 
@@ -102,56 +105,59 @@ fun DayScreen(
     Scaffold(
         // bara de sus cu navigare între zile
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    TextButton(onClick = { vm.previousDay() }) { Text("←") }
-                },
-                title = {
-                    val d = LocalDate.parse(date)
-                    Column {
-                        Text(
-                            d.format(dayFormatter).replaceFirstChar { it.uppercase() },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(d.format(dateFormatter), style = MaterialTheme.typography.titleLarge)
-                    }
-                },
-                actions = {
-                    if (!isToday) {
-                        TextButton(onClick = { vm.goToToday() }) { Text("Azi") }
-                    }
-                    TextButton(onClick = { vm.nextDay() }) { Text("→") }
-                    // meniul zilei: marcarea ca zi liberă
-                    Box {
-                        var dayMenuOpen by remember { mutableStateOf(false) }
-                        TextButton(onClick = { dayMenuOpen = true }) {
-                            Text("⋮", style = MaterialTheme.typography.titleMedium)
+            Column {
+                TopAppBar(
+                    title = {
+                        val d = LocalDate.parse(date)
+                        Column {
+                            Text(
+                                d.format(dayFormatter).replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(d.format(dateFormatter), style = MaterialTheme.typography.titleLarge)
                         }
-                        DropdownMenu(expanded = dayMenuOpen, onDismissRequest = { dayMenuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Planifică din text") },
-                                onClick = { dayMenuOpen = false; onPlan() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Planifică săptămâna") },
-                                onClick = { dayMenuOpen = false; onPlanWeek() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Pregătire pentru un eveniment") },
-                                onClick = { dayMenuOpen = false; onPrep() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (isDayOff) "Scoate marcajul de zi liberă" else "Marchează ca zi liberă") },
-                                onClick = { dayMenuOpen = false; vm.toggleDayOff() }
-                            )
+                    },
+                    actions = {
+                        if (!isToday) {
+                            TextButton(onClick = { vm.goToToday() }) { Text("Azi") }
+                        }
+                        // meniul zilei: marcarea ca zi liberă
+                        Box {
+                            var dayMenuOpen by remember { mutableStateOf(false) }
+                            TextButton(onClick = { dayMenuOpen = true }) {
+                                Text("⋮", style = MaterialTheme.typography.titleMedium)
+                            }
+                            DropdownMenu(expanded = dayMenuOpen, onDismissRequest = { dayMenuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Planifică din text") },
+                                    onClick = { dayMenuOpen = false; onPlan() }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Planifică săptămâna") },
+                                    onClick = { dayMenuOpen = false; onPlanWeek() }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Pregătire pentru un eveniment") },
+                                    onClick = { dayMenuOpen = false; onPrep() }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (isDayOff) "Scoate marcajul de zi liberă" else "Marchează ca zi liberă") },
+                                    onClick = { dayMenuOpen = false; vm.toggleDayOff() }
+                                )
+                            }
                         }
                     }
-                }
-            )
+                )
+                DayWeekStrip(
+                    selected = LocalDate.parse(date),
+                    dots = weekDots,
+                    onSelect = { vm.changeDate(it.toString()) }
+                )
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) { Text("+") }
+            FloatingActionButton(onClick = { addAtMinute = null; showAddDialog = true }) { Text("+") }
         }
     ) { padding ->
 
@@ -257,13 +263,27 @@ fun DayScreen(
                     }
                 }
 
-                // sortate după ora de start, cele fără oră la final
-                items(
-                    activities
-                        .filter { activeTag == null || activeTag in Tags.decode(it.tags) }
-                        .sortedWith(compareBy(nullsLast()) { it.plannedStartMinute }),
-                    key = { it.id }
-                ) { activity ->
+                // linia de timp: activitățile cu oră, cu spațiile libere între ele; cele fără oră, mai jos
+                val visible = activities.filter { activeTag == null || activeTag in Tags.decode(it.tags) }
+                val timed = visible.filter { it.plannedStartMinute != null }
+                val untimed = visible.filter { it.plannedStartMinute == null }
+
+                val today = LocalDate.now()
+                val gaps = if (activeTag == null && !isDayOff && date >= today.toString()) {
+                    val now = java.time.LocalTime.now()
+                    val from = if (date == today.toString()) maxOf(8 * 60, (now.hour * 60 + now.minute + 4) / 5 * 5) else 8 * 60
+                    val busy = activities
+                        .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+                        .mapNotNull { a -> a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) } } +
+                            calendarEvents.filter { it.busy }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) } +
+                            fixedBlocks.map { SlotRecommender.Busy(it.busyStart, it.busyEnd) }
+                    TimelineGaps.compute(busy, from, 22 * 60)
+                } else emptyList()
+
+                val entries = (timed.map { TimelineEntry.Act(it) } + gaps.map { TimelineEntry.Gap(it) })
+                    .sortedBy { it.startMinute }
+
+                val activityRow: @Composable (Activity) -> Unit = { activity ->
                     ActivityRow(
                         activity = activity,
                         categoryName = categories.find { it.id == activity.categoryId }?.name,
@@ -281,6 +301,40 @@ fun DayScreen(
                         onPostponePick = { postponing = activity },
                         onDelete = { vm.deleteActivity(activity) }
                     )
+                }
+
+                items(entries, key = { it.key }) { entry ->
+                    when (entry) {
+                        is TimelineEntry.Gap -> TimelineGapItem(
+                            gap = entry.gap,
+                            startLabel = formatMinute(entry.gap.start),
+                            onAdd = { addAtMinute = entry.gap.start; showAddDialog = true }
+                        )
+                        is TimelineEntry.Act -> {
+                            val a = entry.activity
+                            TimelineItem(
+                                time = formatMinute(entry.startMinute),
+                                marker = {
+                                    TimelineMarker(
+                                        letter = categories.find { it.id == a.categoryId }?.name?.firstOrNull()?.uppercase() ?: "•",
+                                        done = a.state == "DONE" || a.state == "PARTIAL"
+                                    )
+                                }
+                            ) { activityRow(a) }
+                        }
+                    }
+                }
+
+                if (untimed.isNotEmpty()) {
+                    item(key = "untimed-title") {
+                        Text(
+                            "Fără oră",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    items(untimed, key = { it.id }) { activity -> activityRow(activity) }
                 }
 
                 // închiderea zilei, doar pentru azi și zilele trecute
@@ -312,6 +366,7 @@ fun DayScreen(
     if (showAddDialog) {
         ActivityDialog(
             initial = null,
+            presetStartMinute = addAtMinute,
             categories = categories,
             places = places,
             date = date,
@@ -322,7 +377,7 @@ fun DayScreen(
             calendarEvents = calendarEvents,
             fixedBlocks = fixedBlocks,
             analysisOn = analysisOn,
-            onDismiss = { showAddDialog = false },
+            onDismiss = { showAddDialog = false; addAtMinute = null },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
                 vm.addActivity(
@@ -330,6 +385,7 @@ fun DayScreen(
                     r.note, r.tags, r.placeId
                 )
                 showAddDialog = false
+                addAtMinute = null
             }
         )
     }
@@ -816,6 +872,7 @@ private data class ActivityFormResult(
 @Composable
 private fun ActivityDialog(
     initial: Activity?,
+    presetStartMinute: Int? = null,
     categories: List<Category>,
     places: List<Place>,
     date: String,
@@ -840,7 +897,7 @@ private fun ActivityDialog(
     var expanded by remember { mutableStateOf(false) }
     var selectedPlaceId by remember { mutableStateOf(initial?.placeId) }
     var placeExpanded by remember { mutableStateOf(false) }
-    var startMinute by remember { mutableStateOf(initial?.plannedStartMinute) }
+    var startMinute by remember { mutableStateOf(initial?.plannedStartMinute ?: presetStartMinute) }
     var showTimePicker by remember { mutableStateOf(false) }
     var tagsInput by remember { mutableStateOf(initial?.let { Tags.toInput(it.tags) } ?: "") }
     var note by remember { mutableStateOf(initial?.note ?: "") }

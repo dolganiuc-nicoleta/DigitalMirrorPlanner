@@ -106,6 +106,18 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         _date.flatMapLatest { repo.observeActivitiesForDate(it) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // punctele de sub zilele benzii din partea de sus: câte activități are fiecare zi din săptămâna aleasă
+    val weekDots: StateFlow<Map<String, DayDot>> =
+        _date.flatMapLatest { d ->
+            val day = LocalDate.parse(d)
+            val start = day.minusDays((day.dayOfWeek.value - 1).toLong())
+            repo.observeActivitiesInRange(start.toString(), start.plusDays(6).toString())
+        }.map { list ->
+            list.filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+                .groupBy { it.date }
+                .mapValues { (_, items) -> DayDot(items.size, items.count { it.state == "DONE" || it.state == "PARTIAL" }) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     // modul de deplasare (același ca în „Locuri”) și estimările făcute în această sesiune
     private val _travelMode = MutableStateFlow(TravelPrefs.mode(app))
     val travelMode: StateFlow<TravelEstimator.Mode> = _travelMode
