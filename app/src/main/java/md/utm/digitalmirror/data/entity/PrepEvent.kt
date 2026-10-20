@@ -1,5 +1,6 @@
 package md.utm.digitalmirror.data.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -23,5 +24,7 @@ data class PrepStep(
     val eventId: Long,
     val title: String,
     val minutes: Int,
-    val position: Int
+    val position: Int,
+    @ColumnInfo(defaultValue = "0")
+    val completed: Boolean = false      // v17 · utilizatorul a marcat pasul ca gata, chiar dacă a lucrat mai puțin decât planificat
 )

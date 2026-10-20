@@ -53,6 +53,13 @@ interface PrepDao {
     @Query("SELECT * FROM activity WHERE prepStepId IS NOT NULL")
     fun observeAllSessions(): Flow<List<Activity>>
 
+    /** Sesiunile neîncepute ale unui singur pas, de la o dată încolo (când pasul e marcat gata). */
+    @Query("SELECT * FROM activity WHERE prepStepId = :stepId AND state = 'PLANNED' AND date >= :from")
+    suspend fun movableForStep(stepId: Long, from: String): List<Activity>
+
+    @Query("DELETE FROM activity WHERE prepStepId = :stepId AND state = 'PLANNED' AND date >= :from")
+    suspend fun deleteMovableForStep(stepId: Long, from: String)
+
     /** Sesiunile încă neîncepute, de la o dată încolo: acestea se pot muta la replanificare. */
     @Query("SELECT * FROM activity WHERE prepStepId IN (SELECT id FROM prep_step WHERE eventId = :eventId) AND state = 'PLANNED' AND date >= :from")
     suspend fun movableSessions(eventId: Long, from: String): List<Activity>

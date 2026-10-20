@@ -262,7 +262,9 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
                                         Text(
                                             if (s.startMinute >= 0) "${clock(s.startMinute)}–${clock(s.endMinute)}" else "fără oră",
                                             color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.width(96.dp)
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.width(124.dp)
                                         )
                                         Text(s.title + if (s.pinned) "  📌" else "", modifier = Modifier.weight(1f))
                                     }

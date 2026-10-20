@@ -121,11 +121,22 @@ fun PrepDetailScreen(
                             progress = { if (row.step.minutes <= 0) 0f else shown / row.step.minutes.toFloat() },
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Text(
-                            "${formatDuration(shown)} din ${formatDuration(row.step.minutes)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (row.step.completed) "Gata ✓" else "${formatDuration(shown)} din ${formatDuration(row.step.minutes)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (row.step.completed) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (row.step.completed) {
+                                TextButton(onClick = {
+                                    vm.reopenStep(row.step) { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+                                }) { Text("Redeschide") }
+                            } else {
+                                TextButton(onClick = { vm.completeStep(row.step) }) { Text("Pasul e gata") }
+                            }
+                        }
                     }
                 }
             }
@@ -156,7 +167,9 @@ fun PrepDetailScreen(
                                                 "${clock(s)}–${clock(s + (a.userEstimatedMinutes ?: 0))}"
                                             } ?: "fără oră",
                                             color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.width(96.dp)
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.width(124.dp)
                                         )
                                         Text(a.title.removePrefix(prefix), modifier = Modifier.weight(1f))
                                         if (finished) Text("✓", color = MaterialTheme.colorScheme.primary)

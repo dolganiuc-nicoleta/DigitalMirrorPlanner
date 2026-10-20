@@ -115,6 +115,20 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         onDone(message(schedule(eventId)))
     }
 
+    /** Pasul e gata: se socotește 100% și sesiunile lui neîncepute dispar, ca timpul să se elibereze. */
+    fun completeStep(step: PrepStep) = viewModelScope.launch {
+        val from = LocalDate.now().toString()
+        prep.movableForStep(step.id, from).forEach { ActivityReminders.onActivityClosed(app, it.id) }
+        prep.deleteMovableForStep(step.id, from)
+        prep.updateStep(step.copy(completed = true))
+    }
+
+    /** Pasul se redeschide și ce a rămas din el se așază din nou în zile. */
+    fun reopenStep(step: PrepStep, onDone: (String) -> Unit) = viewModelScope.launch {
+        prep.updateStep(step.copy(completed = false))
+        onDone(message(schedule(step.eventId)))
+    }
+
     /** Șterge evenimentul și sesiunile neîncepute; ce ai terminat rămâne în istoric. */
     fun delete(eventId: Long, onDone: () -> Unit) = viewModelScope.launch {
         prep.movableSessions(eventId, "0000-01-01").forEach { ActivityReminders.onActivityClosed(app, it.id) }
@@ -139,7 +153,7 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
 
         // cât s-a lucrat deja la fiecare pas
         val existing = prep.getSessions(eventId)
-        val remaining = steps.map { step ->
+        val remaining = steps.filter { !it.completed }.map { step ->
             val done = existing.filter { it.prepStepId == step.id && it.state in DONE_STATES }.sumOf { it.actualMinutes ?: 0 }
             step to (step.minutes - done).coerceAtLeast(0)
         }.filter { it.second > 0 }
@@ -219,7 +233,9 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
 
         private fun summarize(event: PrepEvent, steps: List<PrepStep>, sessions: List<Activity>, today: LocalDate): Detail {
             val rows = steps.map { step ->
-                val done = sessions.filter { it.prepStepId == step.id && it.state in DONE_STATES }.sumOf { it.actualMinutes ?: 0 }
+                // un pas marcat „gata” se socotește făcut în întregime
+                val done = if (step.completed) step.minutes
+                else sessions.filter { it.prepStepId == step.id && it.state in DONE_STATES }.sumOf { it.actualMinutes ?: 0 }
                 StepRow(step, done)
             }
             val planned = rows.map { it.step.minutes }
