@@ -43,7 +43,8 @@ object WeekPlanner {
         val sessionMinutes: Int,
         val deadline: LocalDate? = null,        // ultima zi în care sesiunile mai au voie
         val pinnedDate: LocalDate? = null,      // toate sesiunile pe această zi
-        val history: List<SlotRecommender.Outcome> = emptyList()
+        val history: List<SlotRecommender.Outcome> = emptyList(),
+        val notBefore: LocalDate? = null        // prima zi în care sesiunile au voie (folosit la pregătirea unui eveniment)
     )
 
     data class DayInput(
@@ -132,10 +133,11 @@ object WeekPlanner {
 
         for (task in ordered) {
             for (size in split(task.totalMinutes, task.sessionMinutes)) {
-                val candidates = days.filter { day ->
+                fun candidatesFor(respectNotBefore: Boolean) = days.filter { day ->
                     when {
                         task.pinnedDate != null -> day.date == task.pinnedDate
                         task.deadline != null && day.date.isAfter(task.deadline) -> false
+                        respectNotBefore && task.notBefore != null && day.date.isBefore(task.notBefore) -> false
                         else -> true
                     }
                 }.mapNotNull { day ->
@@ -143,6 +145,9 @@ object WeekPlanner {
                     val slot = slotFor(task, size, occupied.getValue(day.date), start) ?: return@mapNotNull null
                     Candidate(day, slot)
                 }
+                // „nu înainte de” e o dorință: dacă în fereastră nu mai e loc, mai bine mai devreme decât deloc
+                var candidates = candidatesFor(true)
+                if (candidates.isEmpty() && task.notBefore != null) candidates = candidatesFor(false)
 
                 val best = if (task.pinnedDate != null) candidates.firstOrNull()
                 else candidates.minWithOrNull(

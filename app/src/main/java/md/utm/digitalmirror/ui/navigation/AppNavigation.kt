@@ -33,6 +33,9 @@ import md.utm.digitalmirror.ui.goals.GoalsScreen
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import md.utm.digitalmirror.ui.onboarding.OnboardingScreen
 import md.utm.digitalmirror.ui.places.PlacesScreen
+import md.utm.digitalmirror.ui.prep.PrepDetailScreen
+import md.utm.digitalmirror.ui.prep.PrepNewScreen
+import md.utm.digitalmirror.ui.prep.PrepScreen
 import md.utm.digitalmirror.ui.profile.ProfileScreen
 import md.utm.digitalmirror.ui.plan.PlanScreen
 import md.utm.digitalmirror.ui.report.ReportScreen
@@ -52,6 +55,9 @@ object Routes {
     const val WEEK = "week"
     const val SETTINGS = "settings"
     const val PROFILE = "profile"
+    const val PREP = "prep"
+    const val PREP_NEW = "prep_new"
+    const val PREP_DETAIL = "prep_detail/{id}"
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
     const val AUTH = "auth"
@@ -60,6 +66,7 @@ object Routes {
 
     fun closing(date: String) = "closing/$date"
     fun activity(id: Long) = "activity/$id"
+    fun prepDetail(id: Long) = "prep_detail/$id"
 }
 
 // tab-urile din bara de jos
@@ -142,7 +149,8 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     onCloseDay = { date -> navController.navigate(Routes.closing(date)) },
                     onOpenActivity = { id -> navController.navigate(Routes.activity(id)) },
                     onPlan = { navController.navigate(Routes.PLAN) },
-                    onPlanWeek = { navController.navigate(Routes.WEEK) }
+                    onPlanWeek = { navController.navigate(Routes.WEEK) },
+                    onPrep = { navController.navigate(Routes.PREP) }
                 )
             }
 
@@ -184,6 +192,37 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 WeekScreen(
                     onBack = { navController.popBackStack() },
                     onPlanTomorrow = { navController.navigate(Routes.PLAN) }
+                )
+            }
+
+            composable(Routes.PREP) {
+                PrepScreen(
+                    onBack = { navController.popBackStack() },
+                    onNew = { navController.navigate(Routes.PREP_NEW) },
+                    onOpen = { id -> navController.navigate(Routes.prepDetail(id)) }
+                )
+            }
+
+            composable(Routes.PREP_NEW) {
+                PrepNewScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Routes.prepDetail(id)) {
+                            popUpTo(Routes.PREP_NEW) { inclusive = true }   // înapoi nu mai duce la formular
+                        }
+                    }
+                )
+            }
+
+            composable(
+                route = Routes.PREP_DETAIL,
+                arguments = listOf(navArgument("id") { type = NavType.LongType })
+            ) { entry ->
+                val id = entry.arguments?.getLong("id") ?: return@composable
+                PrepDetailScreen(
+                    eventId = id,
+                    onBack = { navController.popBackStack() },
+                    onOpenActivity = { activityId -> navController.navigate(Routes.activity(activityId)) }
                 )
             }
 

@@ -52,6 +52,7 @@ fun DayScreen(
     onOpenActivity: (Long) -> Unit = {},
     onPlan: () -> Unit = {},
     onPlanWeek: () -> Unit = {},
+    onPrep: () -> Unit = {},
     vm: DayViewModel = viewModel()
 ) {
     val date by vm.date.collectAsState()
@@ -137,6 +138,10 @@ fun DayScreen(
                                 onClick = { dayMenuOpen = false; onPlanWeek() }
                             )
                             DropdownMenuItem(
+                                text = { Text("Pregătire pentru un eveniment") },
+                                onClick = { dayMenuOpen = false; onPrep() }
+                            )
+                            DropdownMenuItem(
                                 text = { Text(if (isDayOff) "Scoate marcajul de zi liberă" else "Marchează ca zi liberă") },
                                 onClick = { dayMenuOpen = false; vm.toggleDayOff() }
                             )
@@ -168,6 +173,7 @@ fun DayScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onPlan) { Text("Plan rapid") }
                         OutlinedButton(onClick = onPlanWeek) { Text("Săptămâna") }
+                        OutlinedButton(onClick = onPrep) { Text("Pregătire") }
                     }
                     // reflecția se poate face și într-o zi fără activități
                     if (canClose) {
@@ -191,8 +197,10 @@ fun DayScreen(
                 // scurtături vizibile către planificare
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onPlan, modifier = Modifier.weight(1f)) { Text("Plan rapid") }
-                        OutlinedButton(onClick = onPlanWeek, modifier = Modifier.weight(1f)) { Text("Săptămâna") }
+                        val tight = PaddingValues(horizontal = 4.dp)
+                        OutlinedButton(onClick = onPlan, contentPadding = tight, modifier = Modifier.weight(1f)) { Text("Plan rapid", maxLines = 1) }
+                        OutlinedButton(onClick = onPlanWeek, contentPadding = tight, modifier = Modifier.weight(1f)) { Text("Săptămâna", maxLines = 1) }
+                        OutlinedButton(onClick = onPrep, contentPadding = tight, modifier = Modifier.weight(1f)) { Text("Pregătire", maxLines = 1) }
                     }
                 }
 

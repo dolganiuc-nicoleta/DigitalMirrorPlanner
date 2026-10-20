@@ -31,9 +31,11 @@ import md.utm.digitalmirror.domain.TitleKey
         WeekTask::class,
         Place::class,
         PresenceLog::class,
-        TravelRoute::class
+        TravelRoute::class,
+        PrepEvent::class,
+        PrepStep::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -52,6 +54,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun placeDao(): PlaceDao
     abstract fun presenceLogDao(): PresenceLogDao
     abstract fun travelRouteDao(): TravelRouteDao
+    abstract fun prepDao(): PrepDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -290,6 +293,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v15 → v16: pregătirea pentru evenimente (pași și sesiuni legate de ei)
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `prep_event` (" +
+                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, " +
+                            "`eventDate` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `prep_step` (" +
+                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `eventId` INTEGER NOT NULL, " +
+                            "`title` TEXT NOT NULL, `minutes` INTEGER NOT NULL, `position` INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_prep_step_eventId` ON `prep_step` (`eventId`)")
+                db.execSQL("ALTER TABLE `activity` ADD COLUMN `prepStepId` INTEGER")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -297,7 +318,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "digitalmirror.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     .build()
                     .also { INSTANCE = it }
             }

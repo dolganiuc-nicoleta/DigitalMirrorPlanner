@@ -41,7 +41,8 @@ data class Activity(
     @ColumnInfo(defaultValue = "''")
     val tags: String = "",               // v9 · etichete separate prin virgulă, fără #
     val weekTaskId: Long? = null,        // v10 · sarcina din planul săptămânii din care vine sesiunea
-    val placeId: Long? = null            // v12 · locul unde se desfășoară (din „Locuri”), null = nespecificat
+    val placeId: Long? = null,           // v12 · locul unde se desfășoară (din „Locuri”), null = nespecificat
+    val prepStepId: Long? = null         // v16 · pasul din pregătirea unui eveniment din care vine sesiunea
 ) {
     companion object {
         // sursele durate reale; estimatorul învață doar din cele sigure
