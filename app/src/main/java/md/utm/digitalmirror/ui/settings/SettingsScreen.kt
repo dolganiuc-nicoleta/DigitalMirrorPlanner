@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.auth.AuthRepository
+import md.utm.digitalmirror.data.backup.CloudConfig
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.AvailabilityRule
 import md.utm.digitalmirror.data.entity.Category
@@ -58,6 +59,10 @@ fun SettingsScreen(
     var renaming by remember { mutableStateOf<Category?>(null) }
     var deleting by remember { mutableStateOf<Category?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
+    var confirmCloudDelete by remember { mutableStateOf(false) }
+    val cloudStatus by vm.cloudStatus.collectAsState()
+    val cloudBusy by vm.cloudBusy.collectAsState()
+    LaunchedEffect(Unit) { vm.refreshCloud() }
 
     // exportul: utilizatorul alege unde salvează fișierul (Descărcări, Drive etc.)
     var exportFull by remember { mutableStateOf(false) }
@@ -433,6 +438,42 @@ fun SettingsScreen(
                 }
             }
 
+            // 6a. copie în cloud (apare doar dacă serverul e configurat)
+            if (CloudConfig.isConfigured) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Copie în cloud", fontWeight = FontWeight.Medium)
+                            Text("Păstrează o copie în contul tău și o poți restaura pe alt telefon, după ce te conectezi.")
+                            if (cloudStatus.isNotEmpty()) Hint(cloudStatus)
+                            Button(
+                                enabled = !cloudBusy,
+                                onClick = {
+                                    vm.uploadCloud { message ->
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            ) { Text(if (cloudBusy) "Se lucrează…" else "Salvează în cloud") }
+                            OutlinedButton(
+                                enabled = !cloudBusy,
+                                onClick = {
+                                    vm.readCloud { message ->
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            ) { Text("Restaurează din cloud") }
+                            TextButton(
+                                enabled = !cloudBusy,
+                                onClick = { confirmCloudDelete = true }
+                            ) { Text("Șterge copia din cloud", color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                }
+            }
+
             // 6b. analiza și recomandările
             item {
                 Spacer(Modifier.height(4.dp))
@@ -591,6 +632,25 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { vm.cancelRestore() }) { Text("Anulează") }
+            }
+        )
+    }
+
+    if (confirmCloudDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmCloudDelete = false },
+            title = { Text("Ștergi copia din cloud?") },
+            text = { Text("Datele de pe telefon rămân. Se șterge doar copia de pe server.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmCloudDelete = false
+                    vm.deleteCloud { message ->
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }) { Text("Șterge", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmCloudDelete = false }) { Text("Anulează") }
             }
         )
     }

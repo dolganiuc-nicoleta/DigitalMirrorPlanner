@@ -10,6 +10,8 @@ import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.db.AppDatabase
 import android.net.Uri
 import md.utm.digitalmirror.data.backup.BackupManager
+import md.utm.digitalmirror.data.backup.CloudBackup
+import md.utm.digitalmirror.data.backup.CloudConfig
 import md.utm.digitalmirror.data.entity.AvailabilityRule
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DayOff
@@ -233,6 +235,59 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             "Restaurarea nu a reușit, nu s-a schimbat nimic: ${e.message}"
         }
+        onDone(message)
+    }
+
+    // 5b. copie de rezervă în cloud
+    private val _cloudStatus = MutableStateFlow("")
+    val cloudStatus: StateFlow<String> = _cloudStatus
+    private val _cloudBusy = MutableStateFlow(false)
+    val cloudBusy: StateFlow<Boolean> = _cloudBusy
+
+    fun refreshCloud() = viewModelScope.launch {
+        if (!CloudConfig.isConfigured) return@launch
+        _cloudStatus.value = try {
+            val info = CloudBackup.info()
+            if (info.exists) "Ultima copie în cloud: ${info.savedAtLabel()}" else "Încă nu ai nicio copie în cloud."
+        } catch (e: Exception) {
+            e.message ?: "Nu am putut verifica."
+        }
+    }
+
+    fun uploadCloud(onDone: (String) -> Unit) = viewModelScope.launch {
+        _cloudBusy.value = true
+        val message = try {
+            val rows = CloudBackup.upload(app)
+            "Copie salvată în cloud · $rows înregistrări"
+        } catch (e: Exception) {
+            "Copia în cloud nu a reușit: ${e.message}"
+        }
+        _cloudBusy.value = false
+        refreshCloud()
+        onDone(message)
+    }
+
+    /** Descarcă copia din cloud și o arată în același dialog ca restaurarea din fișier. */
+    fun readCloud(onError: (String) -> Unit) = viewModelScope.launch {
+        _cloudBusy.value = true
+        try {
+            _restorePreview.value = CloudBackup.download(app)
+        } catch (e: Exception) {
+            onError(e.message ?: "Nu am putut descărca copia.")
+        }
+        _cloudBusy.value = false
+    }
+
+    fun deleteCloud(onDone: (String) -> Unit) = viewModelScope.launch {
+        _cloudBusy.value = true
+        val message = try {
+            CloudBackup.delete()
+            "Copia din cloud a fost ștearsă"
+        } catch (e: Exception) {
+            "Nu am putut șterge: ${e.message}"
+        }
+        _cloudBusy.value = false
+        refreshCloud()
         onDone(message)
     }
 

@@ -65,6 +65,15 @@ object BackupManager {
 
     /** Salvează copia în fișierul ales de utilizator. Returnează numărul total de rânduri. */
     suspend fun create(context: Context, uri: Uri): Int = withContext(Dispatchers.IO) {
+        val (text, rows) = createJson(context)
+        val out = context.contentResolver.openOutputStream(uri, "wt")
+            ?: throw BackupException("Nu am putut scrie fișierul.")
+        out.bufferedWriter().use { it.write(text) }
+        rows
+    }
+
+    /** Copia ca text JSON (pentru fișier sau pentru cloud) și numărul de rânduri. */
+    suspend fun createJson(context: Context): Pair<String, Int> = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
         val sdb = db.openHelper.readableDatabase
 
@@ -88,17 +97,18 @@ object BackupManager {
                 .put("reminderMinute", ReminderPrefs.minuteOfDay(context)))
             .put("tables", tables)
 
-        val out = context.contentResolver.openOutputStream(uri, "wt")
-            ?: throw BackupException("Nu am putut scrie fișierul.")
-        out.bufferedWriter().use { it.write(root.toString()) }
-        rows
+        root.toString() to rows
     }
 
     /** Citește și verifică un fișier de copie, fără să schimbe nimic în aplicație. */
     suspend fun read(context: Context, uri: Uri): Preview = withContext(Dispatchers.IO) {
         val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
             ?: throw BackupException("Nu am putut citi fișierul.")
+        parse(context, text)
+    }
 
+    /** Verifică un text de copie (din fișier sau din cloud), fără să schimbe nimic în aplicație. */
+    suspend fun parse(context: Context, text: String): Preview = withContext(Dispatchers.IO) {
         val root = try {
             JSONObject(text)
         } catch (e: Exception) {
