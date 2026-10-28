@@ -161,12 +161,16 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     allowSkip = firstRun,
                     onBack = if (firstRun) null else ({ navController.popBackStack() }),
                     onDone = {
-                        if (firstRun) {
-                            navController.navigate(Routes.ONBOARDING) {
+                        when {
+                            // cont nou, sau fără copie în cloud: configurarea inițială
+                            !OnboardingPrefs.isDone(context) -> navController.navigate(Routes.ONBOARDING) {
                                 popUpTo(Routes.AUTH) { inclusive = true }
                             }
-                        } else {
-                            navController.popBackStack()
+                            // datele au fost aduse din cloud: direct ecranul zilei
+                            firstRun -> navController.navigate(Routes.DAY) {
+                                popUpTo(Routes.AUTH) { inclusive = true }
+                            }
+                            else -> navController.popBackStack()
                         }
                     }
                 )

@@ -13,6 +13,8 @@ import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.reminder.ReminderPrefs
 import md.utm.digitalmirror.reminder.ReminderScheduler
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
+import md.utm.digitalmirror.ui.theme.Accent
+import md.utm.digitalmirror.ui.theme.ThemeSettings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -94,7 +96,8 @@ object BackupManager {
                 .put("onboardingDone", OnboardingPrefs.isDone(context))
                 .put("pattern", OnboardingPrefs.pattern(context).name)
                 .put("reminderEnabled", ReminderPrefs.isEnabled(context))
-                .put("reminderMinute", ReminderPrefs.minuteOfDay(context)))
+                .put("reminderMinute", ReminderPrefs.minuteOfDay(context))
+                .put("accent", ThemeSettings.accent.name))
             .put("tables", tables)
 
         root.toString() to rows
@@ -171,6 +174,9 @@ object BackupManager {
                 p.optBoolean("reminderEnabled", true),
                 p.optInt("reminderMinute", ReminderPrefs.DEFAULT_MINUTE)
             )
+            // culoarea aplicației urmează contul (copiile mai vechi nu o au, atunci rămâne cea de acum)
+            runCatching { Accent.valueOf(p.getString("accent")) }
+                .getOrNull()?.let { ThemeSettings.setAccent(context, it) }
         }
 
         // alarmele și reminderul de seară trebuie programate din nou pentru datele restaurate

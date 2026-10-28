@@ -18,7 +18,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.auth.AuthRepository
+import md.utm.digitalmirror.data.backup.AccountSync
+import md.utm.digitalmirror.data.backup.CloudConfig
 import md.utm.digitalmirror.ui.theme.Accent
 import md.utm.digitalmirror.ui.theme.ThemeSettings
 
@@ -32,6 +35,9 @@ fun ProfileScreen(
     // e-mailul se schimbă singur la autentificare și la ieșire din cont
     val email by AuthRepository.emailFlow().collectAsState(initial = AuthRepository.email)
     var confirmSignOut by remember { mutableStateOf(false) }
+    var signingOut by remember { mutableStateOf(false) }
+    var signOutError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     val name = if (email == null) "Fără cont"
     else AuthRepository.displayName?.takeIf { it.isNotBlank() } ?: email!!.substringBefore('@')
@@ -121,17 +127,53 @@ fun ProfileScreen(
 
     if (confirmSignOut) {
         AlertDialog(
-            onDismissRequest = { confirmSignOut = false },
-            title = { Text("Ieși din cont?") },
-            text = { Text("Activitățile și celelalte date rămân pe telefon. Te poți autentifica oricând din nou.") },
-            confirmButton = {
-                TextButton(onClick = {
+            onDismissRequest = {
+                if (!signingOut) {
                     confirmSignOut = false
-                    AuthRepository.signOut()
-                }) { Text("Ieși din cont") }
+                    signOutError = null
+                }
+            },
+            title = { Text("Ieși din cont?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (CloudConfig.isConfigured)
+                            "Datele tale se salvează în cloud și se șterg de pe acest telefon. Le recuperezi când te conectezi din nou."
+                        else
+                            "Activitățile și celelalte date rămân pe telefon. Te poți autentifica oricând din nou."
+                    )
+                    signOutError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !signingOut,
+                    onClick = {
+                        scope.launch {
+                            signingOut = true
+                            signOutError = null
+                            AccountSync.signOut(context)
+                                .onSuccess {
+                                    confirmSignOut = false
+                                    onOpenAuth()
+                                }
+                                .onFailure {
+                                    signOutError = "Nu am putut salva în cloud, așa că am rămas în cont ca să nu pierzi date. " +
+                                            (it.message ?: "")
+                                }
+                            signingOut = false
+                        }
+                    }
+                ) { Text(if (signingOut) "Se salvează…" else "Ieși din cont") }
             },
             dismissButton = {
-                TextButton(onClick = { confirmSignOut = false }) { Text("Anulează") }
+                TextButton(
+                    enabled = !signingOut,
+                    onClick = {
+                        confirmSignOut = false
+                        signOutError = null
+                    }
+                ) { Text("Anulează") }
             }
         )
     }

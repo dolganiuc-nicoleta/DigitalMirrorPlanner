@@ -58,6 +58,11 @@ object OnboardingPrefs {
             .apply()
     }
 
+    /** La ieșirea din cont, următorul cont reia configurarea inițială. */
+    fun reset(context: Context) {
+        prefs(context).edit().clear().apply()
+    }
+
     /** Din cele trei răspunsuri rezultă tiparul zilei. */
     fun patternFrom(fixedSchedule: String?, planChanges: String?, shifts: String?): Pattern = when {
         shifts == "Da" -> Pattern.SHIFTS

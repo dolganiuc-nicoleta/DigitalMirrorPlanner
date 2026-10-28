@@ -1,10 +1,12 @@
 package md.utm.digitalmirror.data.backup
 
 import android.content.Context
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import md.utm.digitalmirror.BuildConfig
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -14,11 +16,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Adresa serverului. Cât timp e goală, butoanele de cloud nu apar în aplicație.
- * Pentru test local pe telefon: adresa calculatorului din rețea, de ex. "http://192.168.1.10:5000".
+ * Adresa serverului vine din local.properties (CLOUD_URL=https://...), nu din cod, ca să nu
+ * ajungă în Git. Cât timp e goală, butoanele de cloud nu apar în aplicație.
  */
 object CloudConfig {
-    const val BASE_URL = ""
+    val BASE_URL: String = BuildConfig.CLOUD_URL
     val isConfigured: Boolean get() = BASE_URL.isNotBlank()
 }
 
@@ -112,6 +114,7 @@ object CloudBackup {
             val bytes = stream?.use { it.readBytes() } ?: ByteArray(0)
             return Response(code, bytes)
         } catch (e: IOException) {
+            Log.w("CloudBackup", "Conexiune eșuată: ${e.message}", e)
             throw BackupManager.BackupException("Nu pot contacta serverul. Verifică internetul.")
         } finally {
             conn.disconnect()

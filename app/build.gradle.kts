@@ -13,6 +13,8 @@ val localProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 val orsApiKey: String = localProperties.getProperty("ORS_API_KEY", "").trim()
+// adresa serverului pentru copia în cloud; goală = butoanele de cloud nu apar în aplicație
+val cloudUrl: String = localProperties.getProperty("CLOUD_URL", "").trim().trimEnd('/')
 
 android {
     namespace = "md.utm.digitalmirror"
@@ -31,6 +33,8 @@ android {
 
         // disponibilă în cod ca BuildConfig.ORS_API_KEY
         buildConfigField("String", "ORS_API_KEY", "\"$orsApiKey\"")
+        // disponibilă în cod ca BuildConfig.CLOUD_URL
+        buildConfigField("String", "CLOUD_URL", "\"$cloudUrl\"")
     }
 
     buildTypes {

@@ -2,6 +2,7 @@ package md.utm.digitalmirror.ui.auth
 
 import android.app.Application
 import android.content.Context
+import android.widget.Toast
 import md.utm.digitalmirror.R
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.auth.AuthRepository
+import md.utm.digitalmirror.data.backup.AccountSync
 import md.utm.digitalmirror.data.prefs.AuthPrefs
 import md.utm.digitalmirror.domain.AuthRules
 import md.utm.digitalmirror.domain.LoginThrottle
@@ -55,6 +57,7 @@ class AuthViewModel(private val app: Application) : AndroidViewModel(app) {
             result.onSuccess {
                 throttle.recordSuccess()
                 AuthPrefs.setSkipped(app, false)
+                bringAccountData()
                 _state.update { it.copy(loading = false) }
                 onSuccess()
             }.onFailure { e ->
@@ -81,6 +84,7 @@ class AuthViewModel(private val app: Application) : AndroidViewModel(app) {
                 app.getString(R.string.default_web_client_id)
             ).onSuccess {
                 AuthPrefs.setSkipped(app, false)
+                bringAccountData()
                 _state.update { it.copy(loading = false) }
                 onSuccess()
             }.onFailure { e ->
@@ -88,6 +92,19 @@ class AuthViewModel(private val app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(loading = false, error = e.message?.ifBlank { null }) }
             }
         }
+    }
+
+    /** După autentificare: aducem datele contului din cloud și spunem utilizatorului ce s-a întâmplat. */
+    private suspend fun bringAccountData() {
+        val message = when (val outcome = AccountSync.afterSignIn(app)) {
+            is AccountSync.Outcome.Restored -> "Datele contului tău au fost aduse din cloud: ${outcome.summary}"
+            AccountSync.Outcome.KeptLocal ->
+                "Ai deja date pe telefon, deci nu le-am înlocuit. Copia din cloud o poți restaura din Setări."
+            is AccountSync.Outcome.Failed ->
+                "Nu am putut aduce datele din cloud: ${outcome.message} Le poți restaura din Setări."
+            AccountSync.Outcome.NothingInCloud, AccountSync.Outcome.Skipped -> null
+        }
+        if (message != null) Toast.makeText(app, message, Toast.LENGTH_LONG).show()
     }
 
     fun forgotPassword() {
