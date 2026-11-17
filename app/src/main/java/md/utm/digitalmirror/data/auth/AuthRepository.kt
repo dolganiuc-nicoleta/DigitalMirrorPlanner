@@ -37,6 +37,9 @@ object AuthRepository {
 
     val isSignedIn: Boolean get() = auth.currentUser != null
 
+    /** Id-ul Firebase al contului conectat, sau null. */
+    val uid: String? get() = auth.currentUser?.uid
+
     /** Emite e-mailul curent și la fiecare autentificare sau ieșire din cont. */
     fun emailFlow(): Flow<String?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.email) }

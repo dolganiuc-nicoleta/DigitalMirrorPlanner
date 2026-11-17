@@ -10,18 +10,78 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import md.utm.digitalmirror.data.auth.AuthRepository
+import md.utm.digitalmirror.data.backup.CloudConfig
 import java.io.File
 
 /**
- * Videoul unei capsule trăiește în spațiul privat al aplicației (filesDir/capsules).
- * Nu intră în copia de rezervă JSON; după o restaurare pe alt telefon capsula rămâne fără video.
+ * Videoul unei capsule trăiește în spațiul privat al aplicației, într-un folder al contului:
+ * filesDir/capsules/<uid> (sau filesDir/capsules/local fără cont). Așa, pe un telefon cu mai multe
+ * conturi, fiecare își vede doar videourile lui; la ieșire din cont ele rămân pe telefon, ascunse,
+ * și reapar când contul intră din nou.
+ *
+ * Nu intră în copia de rezervă JSON (sunt prea mari); după o restaurare pe alt telefon capsula
+ * rămâne fără video.
  */
 object CapsuleVideo {
 
-    private fun dir(context: Context): File = File(context.filesDir, "capsules").apply { mkdirs() }
+    private const val LOCAL = "local"
 
-    // doar numele fișierului, ca un nume modificat să nu iasă din folder
-    fun file(context: Context, name: String): File = File(dir(context), File(name).name)
+    private fun root(context: Context): File = File(context.filesDir, "capsules")
+
+    /**
+     * Folderul contului curent. Datele urmează contul doar când cloudul e configurat;
+     * altfel datele rămân pe telefon la ieșire, deci și videourile rămân în folderul comun.
+     */
+    private fun scope(): String =
+        if (CloudConfig.isConfigured) AuthRepository.uid ?: LOCAL else LOCAL
+
+    private fun dir(context: Context, scope: String = scope()): File =
+        File(root(context), scope).apply { mkdirs() }
+
+    /**
+     * Fișierul videoului, în folderul contului curent. Videourile făcute înainte de folderele pe cont
+     * stau direct în filesDir/capsules; dacă numele e găsit acolo, îl folosim pe acela.
+     */
+    fun file(context: Context, name: String): File {
+        // doar numele fișierului, ca un nume modificat să nu iasă din folder
+        val safe = File(name).name
+        val scoped = File(dir(context), safe)
+        val legacy = File(root(context), safe)
+        return if (!scoped.exists() && legacy.isFile) legacy else scoped
+    }
+
+    /**
+     * După intrarea în cont: videourile folosite fără cont (și cele vechi, din afara folderelor)
+     * trec în folderul contului, împreună cu datele de pe telefon care rămân ale lui.
+     */
+    suspend fun adoptLocal(context: Context) = withContext(Dispatchers.IO) {
+        val uid = AuthRepository.uid ?: return@withContext
+        if (!CloudConfig.isConfigured) return@withContext
+        val target = dir(context, uid)
+        val sources = (root(context).listFiles { f -> f.isFile }.orEmpty().toList() +
+                File(root(context), LOCAL).listFiles { f -> f.isFile }.orEmpty().toList())
+        sources.forEach { moveInto(it, target) }
+    }
+
+    /**
+     * Înainte de ieșirea din cont: videourile vechi, din afara folderelor, sunt ale contului care iese,
+     * deci le mutăm în folderul lui, ca următorul cont să nu le găsească.
+     */
+    suspend fun stashLegacy(context: Context) = withContext(Dispatchers.IO) {
+        val uid = AuthRepository.uid ?: return@withContext
+        val target = dir(context, uid)
+        root(context).listFiles { f -> f.isFile }.orEmpty().forEach { moveInto(it, target) }
+    }
+
+    private fun moveInto(file: File, target: File) {
+        val dest = File(target, file.name)
+        if (dest.exists()) return
+        if (!file.renameTo(dest)) {
+            file.copyTo(dest)
+            file.delete()
+        }
+    }
 
     fun newFileName(): String = "capsula-${System.currentTimeMillis()}.mp4"
 

@@ -138,7 +138,8 @@ fun ProfileScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         if (CloudConfig.isConfigured)
-                            "Datele tale se salvează în cloud și se șterg de pe acest telefon. Le recuperezi când te conectezi din nou."
+                            "Datele tale se salvează în cloud și se șterg de pe acest telefon. Le recuperezi când te conectezi din nou. " +
+                                    "Videourile din capsule nu urcă în cloud: rămân ascunse pe acest telefon și reapar când intri din nou aici."
                         else
                             "Activitățile și celelalte date rămân pe telefon. Te poți autentifica oricând din nou."
                     )

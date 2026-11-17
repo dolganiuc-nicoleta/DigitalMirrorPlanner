@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.auth.AuthRepository
+import md.utm.digitalmirror.data.capsule.CapsuleVideo
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.geo.GeofenceManager
 import md.utm.digitalmirror.data.repository.PlannerRepository
@@ -40,6 +41,8 @@ object AccountSync {
     suspend fun signOut(context: Context): Result<Unit> = try {
         if (CloudConfig.isConfigured && AuthRepository.isSignedIn) {
             CloudBackup.upload(context)
+            // videourile capsulelor nu urcă în cloud; rămân pe telefon, în folderul contului, ascunse de alte conturi
+            CapsuleVideo.stashLegacy(context)
             wipeLocal(context)
         }
         AuthRepository.signOut()
@@ -51,17 +54,23 @@ object AccountSync {
     /** După autentificare: aduce datele contului din cloud, dacă telefonul nu are date proprii. */
     suspend fun afterSignIn(context: Context): Outcome {
         if (!CloudConfig.isConfigured) return Outcome.Skipped
-        return try {
+        val outcome = try {
             val info = CloudBackup.info()
-            if (!info.exists) return Outcome.NothingInCloud
-            if (hasUserData(context)) return Outcome.KeptLocal
-
-            val preview = CloudBackup.download(context)
-            BackupManager.restore(context, preview)
-            Outcome.Restored(preview.describe())
+            when {
+                !info.exists -> Outcome.NothingInCloud
+                hasUserData(context) -> Outcome.KeptLocal
+                else -> {
+                    val preview = CloudBackup.download(context)
+                    BackupManager.restore(context, preview)
+                    Outcome.Restored(preview.describe())
+                }
+            }
         } catch (e: Exception) {
             Outcome.Failed(e.message ?: "Eroare necunoscută.")
         }
+        // datele de pe telefon rămân ale contului, deci și videourile capsulelor lor
+        if (outcome !is Outcome.Restored) runCatching { CapsuleVideo.adoptLocal(context) }
+        return outcome
     }
 
     // ---- ajutătoare ----
