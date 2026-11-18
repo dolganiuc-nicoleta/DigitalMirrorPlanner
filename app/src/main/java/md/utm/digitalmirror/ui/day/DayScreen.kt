@@ -133,7 +133,11 @@ fun DayScreen(
         val arcLegs = skeleton?.legs.orEmpty().map { leg ->
             DayArc.Leg(leg.prepStart, leg.start, leg.end, places.find { it.id == leg.toPlaceId }?.name ?: "alt loc")
         }
-        val result = DayArc.build(s.today.wake, s.bedtime, items, arcLegs, nowMinute.takeIf { isTodayShown })
+        val runningTitle = running?.let { r -> activities.find { it.id == r.activityId }?.title }
+        val result = DayArc.build(
+            s.today.wake, s.bedtime, items, arcLegs, nowMinute.takeIf { isTodayShown },
+            running = runningTitle.takeIf { isTodayShown }
+        )
         Triple(result, s, if (isTodayShown) SkyTime.at(nowMinute) else SkyTime.MORNING)
     }
 

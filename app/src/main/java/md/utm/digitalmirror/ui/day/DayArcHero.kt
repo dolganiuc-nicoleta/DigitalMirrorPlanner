@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -196,17 +197,20 @@ fun DayArcHero(
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 44.dp + 8.dp)
-                .width(r * 2 - 56.dp),
+                .padding(bottom = 44.dp + 6.dp)
+                // îngust, ca soarele de pe arc să nu treacă peste text
+                .width(r * 2 - 110.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 focus.label.uppercase(),
                 color = p.muted,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.8.sp,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 DayArc.duration(focus.minutes),

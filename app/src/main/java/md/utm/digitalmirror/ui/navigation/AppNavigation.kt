@@ -3,7 +3,6 @@ package md.utm.digitalmirror.ui.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -155,7 +154,8 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     }
                     leftTabs.forEach { TabItem(it) }
                     // „+”: un cerc mare, ridicat, în mijloc
-                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    // doar cât bara (fillMaxHeight ar întinde bara pe tot ecranul)
+                    Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.Center) {
                         Surface(
                             onClick = { planHubOpen = true },
                             shape = CircleShape,

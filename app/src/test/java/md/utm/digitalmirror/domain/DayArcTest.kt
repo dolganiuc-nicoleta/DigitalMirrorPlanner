@@ -77,6 +77,16 @@ class DayArcTest {
     }
 
     @Test
+    fun `cu cronometrul pornit - lucrezi la asta, apoi urmatorul lucru`() {
+        // Licența a depășit ora planificată (12:15), cronometrul încă merge la 12:36
+        val running = items.map { if (it.title == "Licență") it.copy(kind = Kind.ACTIVITY) else it }
+        val f = DayArc.build(wake, bed, running, legs, now = h(12, 36), running = "Licență").focus
+        assertEquals("Licență · în lucru", f.label)
+        assertEquals(100, f.minutes)                    // 1h 40 până la pregătire
+        assertEquals("până te pregătești · pleci la 14:46 spre Facultate", f.sentence)
+    }
+
+    @Test
     fun `fara pregatire nu apare segment de pregatire`() {
         val r = DayArc.build(wake, bed, emptyList(), listOf(Leg(h(18, 30), h(18, 30), h(18, 59), "Acasă")), now = null)
         assertTrue(r.segments.none { it.kind == Kind.PREP })

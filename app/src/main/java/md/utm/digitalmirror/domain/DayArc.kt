@@ -32,8 +32,9 @@ object DayArc {
     /**
      * @param now minutul de acum, doar pentru ziua de azi (null pentru altă zi)
      * @param bedtime ora de culcare, peste 24:00 dacă e după miezul nopții
+     * @param running titlul activității pe care rulează cronometrul acum, dacă e cazul
      */
-    fun build(wake: Int, bedtime: Int, items: List<Item>, legs: List<Leg>, now: Int?): Result {
+    fun build(wake: Int, bedtime: Int, items: List<Item>, legs: List<Leg>, now: Int?, running: String? = null): Result {
         val span = (bedtime - wake).coerceAtLeast(60).toFloat()
         fun frac(minute: Int) = ((minute - wake) / span).coerceIn(0f, 1f)
 
@@ -47,7 +48,12 @@ object DayArc {
         val visible = segments.filter { it.to > it.from }
 
         val sun = now?.takeIf { it in wake..bedtime }?.let { frac(it) }
-        return Result(visible, sun, focus(wake, bedtime, items, legs, now))
+        val base = focus(wake, bedtime, items.filter { it.title != running }, legs, now)
+        // lucrezi la ceva cu cronometrul: asta e „acum”; numărul rămâne cât timp mai ai până la următorul lucru
+        val f = if (running != null && now != null) {
+            Focus("$running · în lucru", base.minutes, "${base.label} · ${base.sentence}")
+        } else base
+        return Result(visible, sun, f)
     }
 
     /** Ce contează acum: lucrul în care ești, sau cât mai ai până la următorul, sau până la culcare. */
