@@ -170,6 +170,8 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
             busy += DayBusy.calendar(app, date, calendarPlaces)
             busy += DayBusy.blocks(date, d.rules, d.daysOff)
             busy += scenario.blocks.filter { it.date == date }.map { SlotRecommender.Busy(it.fromMinute, it.toMinute) }
+            // mesele din ferestrele tale: sesiunile nu se pun peste ele
+            busy += travelMatrix.skeleton(busy.toList()).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
             if (date.toString() in d.daysOff) busy += SlotRecommender.Busy(0, 24 * 60)
 
             val planned = activitiesToday.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }

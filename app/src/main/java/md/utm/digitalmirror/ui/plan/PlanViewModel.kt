@@ -256,7 +256,10 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         val calendar = DayBusy.calendar(app, date, DayBusy.calendarPlaces(app))
         val daysOff = db.availabilityDao().observeDaysOff().first().map { it.date }.toSet()
         val blocks = DayBusy.blocks(date, DayBusy.rules(app), daysOff)
-        return activities + calendar + blocks
+        val busy = activities + calendar + blocks
+        // mesele din ferestrele tale: activitățile noi nu se pun peste ele
+        val meals = travelMatrix.skeleton(busy).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
+        return busy + meals
     }
 
     /** Adaugă în plan ce a bifat utilizatorul. Ce nu încape ajunge în ziua următoare, fără oră. */

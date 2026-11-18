@@ -16,7 +16,9 @@ import md.utm.digitalmirror.data.entity.AvailabilityRule
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DayOff
 import md.utm.digitalmirror.data.entity.Place
+import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
+import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.data.travel.TravelRepository
 import md.utm.digitalmirror.data.export.DataExporter
 import md.utm.digitalmirror.data.health.HealthSync
@@ -178,6 +180,16 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
     fun setHome(placeId: Long?) {
         TravelPrefs.setHomePlaceId(app, placeId)
         _home.value = placeId
+    }
+
+    // ferestrele meselor (mic dejun, prânz, cină)
+    private val _meals = MutableStateFlow(MealPrefs.windows(app))
+    val meals: StateFlow<List<MealPlanner.Window>> = _meals
+
+    fun saveMeal(window: MealPlanner.Window) {
+        val updated = _meals.value.map { if (it.kind == window.kind) window else it }
+        MealPrefs.save(app, updated)
+        _meals.value = updated
     }
 
     private val _prepMinutes = MutableStateFlow(TravelPrefs.prepMinutes(app))

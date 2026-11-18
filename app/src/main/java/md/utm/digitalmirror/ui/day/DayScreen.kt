@@ -33,6 +33,7 @@ import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
+import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.domain.TimelineGaps
 import md.utm.digitalmirror.domain.TravelGaps
 import md.utm.digitalmirror.ui.components.DurationField
@@ -70,7 +71,7 @@ fun DayScreen(
     val calendarEvents by vm.calendarEvents.collectAsState()
     val fixedBlocks by vm.fixedBlocks.collectAsState()
     val calendarPlaces by vm.calendarPlaces.collectAsState()
-    val timelineLegs by vm.timelineLegs.collectAsState()
+    val skeleton by vm.skeleton.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
     val legs by vm.legs.collectAsState()
     val travelMode by vm.travelMode.collectAsState()
@@ -281,8 +282,11 @@ fun DayScreen(
                 val untimed = visible.filter { it.plannedStartMinute == null }
 
                 val today = LocalDate.now()
-                // drumurile zilei (fără filtru de etichetă; într-o zi liberă nu le arătăm)
-                val legs = if (activeTag == null && !isDayOff) timelineLegs else emptyList()
+                // drumurile și mesele zilei (fără filtru de etichetă; într-o zi liberă nu le arătăm)
+                val showSkeleton = activeTag == null && !isDayOff
+                val legs = if (showSkeleton) skeleton?.legs.orEmpty() else emptyList()
+                val meals = if (showSkeleton) skeleton?.meals?.slots.orEmpty() else emptyList()
+                val missingMeals = if (showSkeleton) skeleton?.meals?.missing.orEmpty() else emptyList()
                 val gaps = if (activeTag == null && !isDayOff && date >= today.toString()) {
                     val now = java.time.LocalTime.now()
                     val from = if (date == today.toString()) maxOf(8 * 60, (now.hour * 60 + now.minute + 4) / 5 * 5) else 8 * 60
@@ -295,9 +299,15 @@ fun DayScreen(
                                 if (it.placeId != null) SlotRecommender.Busy(it.start, it.end)
                                 else SlotRecommender.Busy(it.busyStart, it.busyEnd)
                             } +
-                            legs.map { SlotRecommender.Busy(it.prepStart, it.end) }
+                            legs.map { SlotRecommender.Busy(it.prepStart, it.end) } +
+                            meals.map { SlotRecommender.Busy(it.start, it.end) }
                     TimelineGaps.compute(busy, from, 22 * 60)
                 } else emptyList()
+
+                // mesele fără loc azi: doar o notă blândă
+                if (missingMeals.isNotEmpty()) {
+                    item(key = "missing-meals") { MissingMealsNote(missingMeals) }
+                }
 
                 // evenimentele din calendar cu oră (nu și când filtrăm după etichetă: ele nu au etichete)
                 val timedEvents = if (activeTag == null) calendarEvents.filter { !it.allDay } else emptyList()
@@ -308,7 +318,8 @@ fun DayScreen(
                         legs.map { leg ->
                             TimelineEntry.Travel(leg, places.find { it.id == leg.toPlaceId }?.name ?: "alt loc")
                         } +
-                        legs.filter { it.prepMinutes > 0 }.map { TimelineEntry.Prep(it) })
+                        legs.filter { it.prepMinutes > 0 }.map { TimelineEntry.Prep(it) } +
+                        meals.map { TimelineEntry.Meal(it) })
                     .sortedBy { it.startMinute }
 
                 val activityRow: @Composable (Activity) -> Unit = { activity ->
@@ -343,6 +354,10 @@ fun DayScreen(
                             places = places,
                             calendarPlaces = calendarPlaces,
                             onSetPlace = { title, placeId -> vm.setCalendarPlace(title, placeId) }
+                        )
+                        is TimelineEntry.Meal -> TimelineMealItem(
+                            meal = entry.meal,
+                            startLabel = formatMinute(entry.meal.start)
                         )
                         is TimelineEntry.Prep -> TimelinePrepItem(
                             leg = entry.leg,
@@ -422,6 +437,7 @@ fun DayScreen(
             loadTravel = { placeId, others -> vm.travelFor(placeId, others) },
             homePlaceId = vm.homePlaceId,
             calendarPlaces = calendarPlaces,
+            mealSlots = skeleton?.meals?.slots.orEmpty(),
             analysisOn = analysisOn,
             onDismiss = { showAddDialog = false; addAtMinute = null },
             onAddCategory = { vm.addCategory(it) },
@@ -452,6 +468,7 @@ fun DayScreen(
             loadTravel = { placeId, others -> vm.travelFor(placeId, others) },
             homePlaceId = vm.homePlaceId,
             calendarPlaces = calendarPlaces,
+            mealSlots = skeleton?.meals?.slots.orEmpty(),
             analysisOn = analysisOn,
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
@@ -1038,6 +1055,7 @@ private fun ActivityDialog(
     loadTravel: suspend (placeId: Long, others: Collection<Long>) -> TravelGaps.Travel,
     homePlaceId: Long?,
     calendarPlaces: Map<String, Long>,
+    mealSlots: List<MealPlanner.Slot>,
     analysisOn: Boolean,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
@@ -1092,7 +1110,9 @@ private fun ActivityDialog(
     }
 
     // ce e deja ocupat în zi, cu locul fiecăruia (pentru drum)
-    val dayBusy = remember(dayActivities, calendarEvents, fixedBlocks, calendarPlaces, initial?.id) {
+    val dayBusy = remember(dayActivities, calendarEvents, fixedBlocks, calendarPlaces, mealSlots, initial?.id) {
+        // mesele: locul păstrat pentru ele nu se propune pentru altceva
+        mealSlots.map { SlotRecommender.Busy(it.start, it.end) } +
         dayActivities
             .filter { it.id != initial?.id && it.state != "ABANDONED" && it.state != "POSTPONED" }
             .mapNotNull { a ->

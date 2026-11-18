@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.db.AppDatabase
+import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.domain.TravelEstimator
 import md.utm.digitalmirror.reminder.ActivityReminders
@@ -103,7 +104,8 @@ object BackupManager {
                 // drumurile: modul de deplasare, locul „acasă” (id-urile se păstrează) și pregătirea de plecare
                 .put("travelMode", TravelPrefs.mode(context).name)
                 .put("homePlaceId", TravelPrefs.homePlaceId(context) ?: JSONObject.NULL)
-                .put("prepMinutes", TravelPrefs.prepMinutes(context)))
+                .put("prepMinutes", TravelPrefs.prepMinutes(context))
+                .put("meals", MealPrefs.toJson(MealPrefs.windows(context))))
             .put("tables", tables)
 
         root.toString() to rows
@@ -186,6 +188,7 @@ object BackupManager {
             // setările de drum (copiile mai vechi nu le au: rămân cele de acum)
             if (p.has("travelMode")) TravelPrefs.setMode(context, TravelEstimator.Mode.fromName(p.optString("travelMode")))
             if (p.has("homePlaceId")) TravelPrefs.setHomePlaceId(context, p.optLong("homePlaceId", -1L).takeIf { it > 0 })
+            p.optJSONArray("meals")?.let { MealPrefs.save(context, MealPrefs.fromJson(it)) }
             if (p.has("prepMinutes")) TravelPrefs.setPrepMinutes(context, p.optInt("prepMinutes", TravelPrefs.DEFAULT_PREP_MINUTES))
         }
 

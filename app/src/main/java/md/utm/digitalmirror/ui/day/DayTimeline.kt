@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.Activity
+import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.domain.TimelineGaps
 import md.utm.digitalmirror.domain.TimelineTravel
 import md.utm.digitalmirror.ui.components.formatDuration
@@ -47,12 +49,75 @@ sealed interface TimelineEntry {
         override val key: String get() = "t${leg.start}-${leg.fromPlaceId}-${leg.toPlaceId}"
     }
 
+    /** O masă, în locul liber ales din fereastra ei. */
+    class Meal(val meal: MealPlanner.Slot) : TimelineEntry {
+        override val startMinute: Int get() = meal.start
+        override val key: String get() = "m${meal.kind.name}"
+    }
+
     /** Pregătirea de plecare de acasă, chiar înaintea drumului. */
     class Prep(val leg: TimelineTravel.Leg) : TimelineEntry {
         override val startMinute: Int get() = leg.prepStart
         override val key: String get() = "p${leg.start}-${leg.toPlaceId}"
     }
 }
+
+/** „🍽 Prânz · ~30 min”: locul păstrat pentru masă, ales din fereastra ei. */
+@Composable
+internal fun TimelineMealItem(meal: MealPlanner.Slot, startLabel: String) {
+    TimelineItem(
+        time = startLabel,
+        marker = {
+            Text(
+                meal.kind.emoji,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text(
+                meal.kind.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "~${formatDuration(meal.end - meal.start)} · loc păstrat pentru masă",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** Mesele pentru care azi n-a fost loc în fereastră: o notă blândă, nu o eroare. */
+@Composable
+internal fun MissingMealsNote(missing: List<MealPlanner.Window>) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            missing.forEach { w ->
+                Text(
+                    "${w.kind.emoji} Azi n-ai pauză de ${w.kind.label.lowercase()} " +
+                            "între ${clock(w.from)} și ${clock(w.to)}.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            Text(
+                if (missing.size == 1) "Ia ceva la pachet sau mănâncă între activități."
+                else "Ia ceva la pachet sau mănâncă între activități, când poți.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+    }
+}
+
+private fun clock(minute: Int): String = "%d:%02d".format(minute / 60, minute % 60)
 
 /** „Pregătire de plecare · 15 min”: îmbrăcat, geantă, încălțat. */
 @Composable

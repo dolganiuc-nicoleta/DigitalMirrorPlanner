@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import md.utm.digitalmirror.data.prefs.TravelPrefs
+import md.utm.digitalmirror.domain.MealPlanner
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -299,6 +300,16 @@ fun SettingsScreen(
                     onHome = { vm.setHome(it) },
                     onPrep = { vm.setPrepMinutes(it) }
                 )
+            }
+
+            // 3a'. mesele, ca ferestre flexibile
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Mese")
+            }
+            item {
+                val meals by vm.meals.collectAsState()
+                MealsCard(meals = meals, onSave = { vm.saveMeal(it) })
             }
 
             // 3b. programul fix: cursuri, masă, somn, cu drumul inclus
@@ -825,6 +836,115 @@ private fun HomeAndPrepCard(
             }
             Hint("Îmbrăcat, geantă, încălțat. Se adaugă înaintea fiecărui drum de acasă.")
         }
+    }
+}
+
+/**
+ * Mesele ca ferestre flexibile: „prânzul e cândva între 12:00 și 15:00, cam 30 min”.
+ * În fiecare zi aplicația alege locul din fereastră, printre cursuri și drumuri.
+ */
+@Composable
+private fun MealsCard(meals: List<MealPlanner.Window>, onSave: (MealPlanner.Window) -> Unit) {
+    var editing by remember { mutableStateOf<MealPlanner.Window?>(null) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Hint("Nu o oră fixă, ci o fereastră: aplicația găsește în fiecare zi un loc liber în ea și nu pune altceva acolo.")
+            meals.forEach { w ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${w.kind.emoji} ${w.kind.label}")
+                        if (w.enabled) {
+                            Hint(
+                                "${formatClock(w.from)}–${formatClock(w.to)} · ${w.minutes} min" +
+                                        if (w.optional) " · opțional" else ""
+                            )
+                        } else Hint("oprit")
+                    }
+                    if (w.enabled) TextButton(onClick = { editing = w }) { Text("Editează") }
+                    Switch(checked = w.enabled, onCheckedChange = { onSave(w.copy(enabled = it)) })
+                }
+            }
+        }
+    }
+    editing?.let { w ->
+        MealDialog(initial = w, onDismiss = { editing = null }, onSave = { onSave(it); editing = null })
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MealDialog(
+    initial: MealPlanner.Window,
+    onDismiss: () -> Unit,
+    onSave: (MealPlanner.Window) -> Unit
+) {
+    var from by remember { mutableStateOf(initial.from) }
+    var to by remember { mutableStateOf(initial.to) }
+    var minutes by remember { mutableStateOf(initial.minutes) }
+    var optional by remember { mutableStateOf(initial.optional) }
+    var pickingFrom by remember { mutableStateOf(false) }
+    var pickingTo by remember { mutableStateOf(false) }
+    val valid = to - from >= minutes
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${initial.kind.emoji} ${initial.kind.label}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Cândva între")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { pickingFrom = true }, modifier = Modifier.weight(1f)) { Text(formatClock(from)) }
+                    OutlinedButton(onClick = { pickingTo = true }, modifier = Modifier.weight(1f)) { Text(formatClock(to)) }
+                }
+                Text("Cât îți ia")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(15, 20, 30, 45, 60).forEach { m ->
+                        FilterChip(selected = minutes == m, onClick = { minutes = m }, label = { Text("$m min") })
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Opțional")
+                        Hint("În zilele fără loc, doar o notă discretă.")
+                    }
+                    Switch(checked = optional, onCheckedChange = { optional = it })
+                }
+                if (!valid) {
+                    Text(
+                        "Fereastra e mai scurtă decât masa.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = valid,
+                onClick = { onSave(initial.copy(from = from, to = to, minutes = minutes, optional = optional)) }
+            ) { Text("Salvează") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Anulează") } }
+    )
+
+    if (pickingFrom) {
+        ReminderTimeDialog(
+            initialMinute = from,
+            title = "De la",
+            onDismiss = { pickingFrom = false },
+            onConfirm = { from = it; pickingFrom = false }
+        )
+    }
+    if (pickingTo) {
+        ReminderTimeDialog(
+            initialMinute = to.coerceAtMost(23 * 60 + 59),
+            title = "Până la",
+            onDismiss = { pickingTo = false },
+            onConfirm = { to = it; pickingTo = false }
+        )
     }
 }
 

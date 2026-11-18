@@ -16,11 +16,13 @@ import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.entity.Reflection
 import md.utm.digitalmirror.data.entity.WorkSession
+import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.data.travel.TravelRepository
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
+import md.utm.digitalmirror.domain.DaySkeleton
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
@@ -273,33 +275,42 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
-     * Drumurile zilei afișate, pentru linia de timp: din activitățile, evenimentele din calendar și blocurile
-     * fixe care au loc. Se calculează doar pentru azi și zilele viitoare.
+     * Scheletul zilei afișate, pentru linia de timp: drumurile (cu pregătirea de plecare) și mesele,
+     * din activitățile, evenimentele din calendar și blocurile fixe. Doar pentru azi și zilele viitoare.
      * `by lazy`, pentru că folosește fluxuri declarate mai jos în clasă (calendarul).
      */
-    val timelineLegs: StateFlow<List<TimelineTravel.Leg>> by lazy {
+    val skeleton: StateFlow<DaySkeleton.Result?> by lazy {
         combine(activities, calendarEvents, fixedBlocks, calendarPlaces, _travelMode) { list, events, blocks, links, _ ->
             val active = list.filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
-            val stops = active.mapNotNull { a ->
+            val busy = active.mapNotNull { a ->
                 val start = a.plannedStartMinute ?: return@mapNotNull null
-                val place = a.placeId ?: return@mapNotNull null
                 // drumurile adăugate deja ca activitate nu sunt locuri prin care treci
-                if (TravelPlanner.TRAVEL_TAG in Tags.decode(a.tags)) return@mapNotNull null
-                TimelineTravel.Stop(start, start + (a.userEstimatedMinutes ?: a.estimatedMinutes ?: 30), place)
-            } + events.filter { it.busy && !it.allDay }.mapNotNull { e ->
-                links[TitleKey.of(e.title)]?.let { TimelineTravel.Stop(e.startMinute, e.endMinute, it) }
-            } + blocks.mapNotNull { b -> b.placeId?.let { TimelineTravel.Stop(b.start, b.end, it) } }
+                val place = a.placeId.takeIf { TravelPlanner.TRAVEL_TAG !in Tags.decode(a.tags) }
+                SlotRecommender.Busy(start, start + (a.userEstimatedMinutes ?: a.estimatedMinutes ?: 30), place)
+            } + events.filter { it.busy && !it.allDay }.map { e ->
+                SlotRecommender.Busy(e.startMinute, e.endMinute, links[TitleKey.of(e.title)])
+            } + blocks.map { it.asBusy() }
             // drumurile puse de mână ca activități, ca să nu le arătăm de două ori
             val manual = active.filter { TravelPlanner.TRAVEL_TAG in Tags.decode(it.tags) }
                 .mapNotNull { a -> a.plannedStartMinute?.let { it to it + (a.userEstimatedMinutes ?: 0) } }
-            Triple(stops, manual, _date.value)
-        }.mapLatest { (stops, manual, date) ->
-            if (stops.isEmpty() || LocalDate.parse(date).isBefore(LocalDate.now())) return@mapLatest emptyList()
+            Triple(busy, manual, _date.value)
+        }.mapLatest { (busy, manual, date) ->
+            if (LocalDate.parse(date).isBefore(LocalDate.now())) return@mapLatest null
             val home = homePlaceId
+            val stops = busy.mapNotNull { b -> b.placeId?.let { TimelineTravel.Stop(b.start, b.end, it) } }
             val travel = travelBetween(TimelineTravel.pairsNeeded(stops, home))
-            TimelineTravel.legs(stops, home, travel, prepMinutes = TravelPrefs.prepMinutes(app))
-                .filter { leg -> manual.none { (s, e) -> s < leg.end && leg.start < e } }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+            // azi: mesele cu fereastra deja trecută nu mai contează, iar celelalte se pun de acum încolo
+            var windows = MealPrefs.windows(app)
+            var mealBusy = busy
+            if (LocalDate.parse(date) == LocalDate.now()) {
+                val now = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+                windows = windows.filter { it.to - it.minutes > now }
+                mealBusy = busy + SlotRecommender.Busy(0, now)
+            }
+            val meals = DaySkeleton.build(mealBusy, home, travel, TravelPrefs.prepMinutes(app), windows).meals
+            val result = DaySkeleton.build(busy, home, travel, TravelPrefs.prepMinutes(app), emptyList()).copy(meals = meals)
+            result.copy(legs = result.legs.filter { leg -> manual.none { (s, e) -> s < leg.end && leg.prepStart < e } })
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     }
 
     fun toggleDayOff() = viewModelScope.launch {

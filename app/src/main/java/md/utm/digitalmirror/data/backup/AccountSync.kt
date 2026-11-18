@@ -7,6 +7,7 @@ import md.utm.digitalmirror.data.auth.AuthRepository
 import md.utm.digitalmirror.data.capsule.CapsuleVideo
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.geo.GeofenceManager
+import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
 import md.utm.digitalmirror.reminder.ActivityReminders
@@ -98,6 +99,7 @@ object AccountSync {
         // „acasă” și pregătirea de plecare sunt ale contului (locurile lui tocmai s-au șters)
         TravelPrefs.setHomePlaceId(context, null)
         TravelPrefs.setPrepMinutes(context, TravelPrefs.DEFAULT_PREP_MINUTES)
+        MealPrefs.reset(context)
 
         // fără locuri, zonele de detectare se scot
         runCatching { GeofenceManager.sync(context) }

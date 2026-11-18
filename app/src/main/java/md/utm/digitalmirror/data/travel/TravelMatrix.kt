@@ -5,8 +5,11 @@ import kotlinx.coroutines.flow.first
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
+import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.domain.Availability
+import md.utm.digitalmirror.domain.DaySkeleton
+import md.utm.digitalmirror.domain.TimelineTravel
 import md.utm.digitalmirror.domain.SlotRecommender.Busy
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.TravelGaps
@@ -22,9 +25,12 @@ class TravelMatrix(private val context: Context) {
     private val cache = mutableMapOf<Triple<Long, Long, String>, Int?>()
 
     /** Drumurile de la și până la locurile [candidates], din și spre locurile [busyPlaces]. */
-    suspend fun forPlaces(candidates: Collection<Long>, busyPlaces: Collection<Long>): TravelGaps.Travel {
+    suspend fun forPlaces(candidates: Collection<Long>, busyPlaces: Collection<Long>): TravelGaps.Travel =
+        forPairs(TravelGaps.pairsNeeded(candidates.toSet(), busyPlaces.toSet()))
+
+    /** Drumurile pentru perechile date, fără pregătire. */
+    suspend fun forPairs(pairs: Set<Pair<Long, Long>>): TravelGaps.Travel {
         val mode = TravelPrefs.mode(context)
-        val pairs = TravelGaps.pairsNeeded(candidates.toSet(), busyPlaces.toSet())
         val missing = pairs.filter { Triple(it.first, it.second, mode.name) !in cache }.toSet()
         if (missing.isNotEmpty()) {
             val found = repo.minutesFor(missing, mode)
@@ -32,6 +38,17 @@ class TravelMatrix(private val context: Context) {
         }
         val known = cache.toMap()
         return TravelGaps.Travel { from, to -> known[Triple(from, to, mode.name)] }
+    }
+
+    /**
+     * Scheletul zilei (drumuri cu pregătire și mese) pentru ce e deja ocupat.
+     * @param busy cu locul fiecărui lucru, ca în [DayBusy]
+     */
+    suspend fun skeleton(busy: List<Busy>): DaySkeleton.Result {
+        val home = homePlaceId
+        val stops = busy.mapNotNull { b -> b.placeId?.let { TimelineTravel.Stop(b.start, b.end, it) } }
+        val travel = forPairs(TimelineTravel.pairsNeeded(stops, home))
+        return DaySkeleton.build(busy, home, travel, TravelPrefs.prepMinutes(context), MealPrefs.windows(context))
     }
 
     /**
