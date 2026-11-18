@@ -23,6 +23,10 @@ import md.utm.digitalmirror.data.travel.TravelRepository
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.DaySkeleton
+import md.utm.digitalmirror.domain.MealPlanner
+import md.utm.digitalmirror.domain.SleepPlanner
+import md.utm.digitalmirror.data.travel.DayBusy
+import md.utm.digitalmirror.data.travel.TravelMatrix
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
@@ -313,6 +317,53 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     }
 
+    /**
+     * Somnul zilei afișate: ora de trezire (din ritmul tău și din primul lucru al zilei) și ora de culcare
+     * din seara ei (ca să dormi cât dormi de obicei până la trezirea de a doua zi).
+     */
+    data class SleepUi(
+        val today: SleepPlanner.Plan,
+        val firstStart: Int?,              // primul lucru din zi, pentru explicație
+        val tomorrow: SleepPlanner.Plan,
+        val tomorrowFirstStart: Int?
+    ) {
+        /** Ora de culcare pe linia de timp a zilei afișate (peste 24:00 dacă e după miezul nopții). */
+        val bedtime: Int get() = tomorrow.bedtimeBefore
+    }
+
+    private val skeletonMatrix by lazy { TravelMatrix(app) }
+
+    /** Intervalul pentru lucruri flexibile: după trezirea obișnuită și dimineață, până la ora de culcare. */
+    val dayWindow: StateFlow<Pair<Int, Int>> =
+        _date.mapLatest { SleepPlanner.activeWindow(DayBusy.recentNights(app, LocalDate.parse(it))) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SleepPlanner.activeWindow(emptyList()))
+
+    val sleep: StateFlow<SleepUi?> by lazy {
+        combine(skeleton, activities, calendarEvents, fixedBlocks, calendarPlaces) { sk, list, events, blocks, links ->
+            val busy = list.filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+                .mapNotNull { a -> a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) } } +
+                    events.filter { it.busy && !it.allDay }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) } +
+                    blocks.map { SlotRecommender.Busy(it.start, it.end) }
+            Triple(sk, busy, _date.value)
+        }.mapLatest { (sk, busy, date) ->
+            val day = LocalDate.parse(date)
+            if (sk == null || day.isBefore(LocalDate.now())) return@mapLatest null
+            val breakfast = MealPrefs.windows(app)
+                .firstOrNull { it.kind == MealPlanner.Kind.BREAKFAST && it.enabled }?.minutes ?: 0
+
+            val first = DayBusy.firstStart(busy, sk)
+            val today = SleepPlanner.plan(DayBusy.recentNights(app, day), first, breakfast)
+
+            // ziua de mâine, ca să știm cât de devreme te trezești și deci când te culci în seara asta
+            val next = day.plusDays(1)
+            val nextBusy = DayBusy.forDate(app, next)
+            val nextFirst = DayBusy.firstStart(nextBusy, skeletonMatrix.skeleton(nextBusy))
+            val tomorrow = SleepPlanner.plan(DayBusy.recentNights(app, next), nextFirst, breakfast)
+
+            SleepUi(today, first, tomorrow, nextFirst)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    }
+
     fun toggleDayOff() = viewModelScope.launch {
         val date = _date.value
         if (isDayOff.value) availabilityDao.deleteDayOff(date) else availabilityDao.insertDayOff(DayOff(date))
@@ -435,7 +486,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun postponeActivity(activity: Activity, newDate: String) = viewModelScope.launch {
         ActivityReminders.onActivityClosed(app, activity.id)
-        repo.postponeActivity(activity.id, newDate)
+        // din azi sau din trecut = amânare; dintr-o zi care n-a venit încă = doar replanificare
+        val due = !LocalDate.parse(activity.date).isAfter(LocalDate.now())
+        repo.postponeActivity(activity.id, newDate, countAsPostponed = due)
         repo.getActivity(activity.id)?.let { ActivityReminders.onActivityPlanned(app, it) }
     }
 

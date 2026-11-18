@@ -28,6 +28,7 @@ import md.utm.digitalmirror.domain.CategoryGuess
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.PeriodReport
 import md.utm.digitalmirror.domain.PlaceGuess
+import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.WeekPlanner
@@ -161,6 +162,8 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in d.daysOff } else emptyList()
         val earliestToday = LocalTime.now().let { maxOf(8 * 60, it.hour * 60 + it.minute + 10) }
         val calendarPlaces = DayBusy.calendarPlaces(app)
+        // sesiunile stau între trezirea ta obișnuită (plus dimineața) și ora ta de culcare
+        val (dayStart, dayEnd) = SleepPlanner.activeWindow(DayBusy.recentNights(app, today))
 
         val inputs = planDays.map { date ->
             val busy = mutableListOf<SlotRecommender.Busy>()
@@ -176,7 +179,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
 
             val planned = activitiesToday.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
             val typical = if (analysisOn) DayLoad.compute(0, totals, date).typicalMinutes else null
-            WeekPlanner.DayInput(date, busy, planned, typical)
+            WeekPlanner.DayInput(date, busy, planned, typical, dayStart, dayEnd)
         }
 
         // rata de reușită din ultimele 4 săptămâni (doar cu analiza pornită și destule date)

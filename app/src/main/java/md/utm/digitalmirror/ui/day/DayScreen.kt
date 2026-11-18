@@ -72,6 +72,8 @@ fun DayScreen(
     val fixedBlocks by vm.fixedBlocks.collectAsState()
     val calendarPlaces by vm.calendarPlaces.collectAsState()
     val skeleton by vm.skeleton.collectAsState()
+    val sleep by vm.sleep.collectAsState()
+    val dayWindow by vm.dayWindow.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
     val legs by vm.legs.collectAsState()
     val travelMode by vm.travelMode.collectAsState()
@@ -289,7 +291,10 @@ fun DayScreen(
                 val missingMeals = if (showSkeleton) skeleton?.meals?.missing.orEmpty() else emptyList()
                 val gaps = if (activeTag == null && !isDayOff && date >= today.toString()) {
                     val now = java.time.LocalTime.now()
-                    val from = if (date == today.toString()) maxOf(8 * 60, (now.hour * 60 + now.minute + 4) / 5 * 5) else 8 * 60
+                    // timpul liber e între trezire și culcare (fără somn propus: 8:00–22:00, ca înainte)
+                    val dayStart = sleep?.today?.wake ?: 8 * 60
+                    val dayEnd = sleep?.bedtime?.coerceAtMost(24 * 60) ?: 22 * 60
+                    val from = if (date == today.toString()) maxOf(dayStart, (now.hour * 60 + now.minute + 4) / 5 * 5) else dayStart
                     val busy = activities
                         .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
                         .mapNotNull { a -> a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) } } +
@@ -301,7 +306,7 @@ fun DayScreen(
                             } +
                             legs.map { SlotRecommender.Busy(it.prepStart, it.end) } +
                             meals.map { SlotRecommender.Busy(it.start, it.end) }
-                    TimelineGaps.compute(busy, from, 22 * 60)
+                    TimelineGaps.compute(busy, from, dayEnd)
                 } else emptyList()
 
                 // mesele fără loc azi: doar o notă blândă
@@ -319,7 +324,10 @@ fun DayScreen(
                             TimelineEntry.Travel(leg, places.find { it.id == leg.toPlaceId }?.name ?: "alt loc")
                         } +
                         legs.filter { it.prepMinutes > 0 }.map { TimelineEntry.Prep(it) } +
-                        meals.map { TimelineEntry.Meal(it) })
+                        meals.map { TimelineEntry.Meal(it) } +
+                        // trezirea sus și culcarea jos (nu și când filtrăm după etichetă)
+                        listOfNotNull(sleep?.takeIf { activeTag == null }?.let { TimelineEntry.Wake(it) }) +
+                        listOfNotNull(sleep?.takeIf { activeTag == null }?.let { TimelineEntry.Bed(it) }))
                     .sortedBy { it.startMinute }
 
                 val activityRow: @Composable (Activity) -> Unit = { activity ->
@@ -334,8 +342,7 @@ fun DayScreen(
                         onOpen = { onOpenActivity(activity.id) },
                         onEdit = { editing = activity },
                         onPostponeTomorrow = {
-                            val tomorrow = LocalDate.parse(activity.date).plusDays(1).toString()
-                            vm.postponeActivity(activity, tomorrow)
+                            vm.postponeActivity(activity, MoveTarget.of(LocalDate.parse(activity.date)).date.toString())
                         },
                         onPostponePick = { postponing = activity },
                         onDelete = { vm.deleteActivity(activity) }
@@ -355,6 +362,8 @@ fun DayScreen(
                             calendarPlaces = calendarPlaces,
                             onSetPlace = { title, placeId -> vm.setCalendarPlace(title, placeId) }
                         )
+                        is TimelineEntry.Wake -> TimelineWakeItem(entry.sleep)
+                        is TimelineEntry.Bed -> TimelineBedItem(entry.sleep)
                         is TimelineEntry.Meal -> TimelineMealItem(
                             meal = entry.meal,
                             startLabel = formatMinute(entry.meal.start)
@@ -438,6 +447,7 @@ fun DayScreen(
             homePlaceId = vm.homePlaceId,
             calendarPlaces = calendarPlaces,
             mealSlots = skeleton?.meals?.slots.orEmpty(),
+            dayWindow = dayWindow,
             analysisOn = analysisOn,
             onDismiss = { showAddDialog = false; addAtMinute = null },
             onAddCategory = { vm.addCategory(it) },
@@ -469,6 +479,7 @@ fun DayScreen(
             homePlaceId = vm.homePlaceId,
             calendarPlaces = calendarPlaces,
             mealSlots = skeleton?.meals?.slots.orEmpty(),
+            dayWindow = dayWindow,
             analysisOn = analysisOn,
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
@@ -590,6 +601,7 @@ private fun ActivityRow(
 
                 ActivityMenu(
                     isClosed = isClosed,
+                    activityDate = LocalDate.parse(activity.date),
                     onEdit = onEdit,
                     onPostponeTomorrow = onPostponeTomorrow,
                     onPostponePick = onPostponePick,
@@ -621,10 +633,33 @@ private fun ActivityRow(
     }
 }
 
+/**
+ * Unde merge activitatea la „mută repede”, după ziua ei:
+ *  - azi → mâine (amânare);
+ *  - o zi trecută, nefăcută → azi;
+ *  - o zi viitoare → ziua de după ea (replanificare, nu amânare).
+ */
+private data class MoveTarget(val date: LocalDate, val label: String, val pickLabel: String) {
+    companion object {
+        private val DAY_NAME = java.time.format.DateTimeFormatter.ofPattern("EEEE", java.util.Locale.forLanguageTag("ro"))
+
+        fun of(activityDate: LocalDate, today: LocalDate = LocalDate.now()): MoveTarget = when {
+            activityDate.isBefore(today) -> MoveTarget(today, "Mută pe azi", "Mută pe altă zi…")
+            activityDate == today -> MoveTarget(today.plusDays(1), "Amână pe mâine", "Amână pe altă zi…")
+            else -> {
+                val next = activityDate.plusDays(1)
+                val name = if (next == today.plusDays(1)) "mâine" else next.format(DAY_NAME)
+                MoveTarget(next, "Mută pe $name", "Mută pe altă zi…")
+            }
+        }
+    }
+}
+
 // meniul ⋮ al unei activități
 @Composable
 private fun ActivityMenu(
     isClosed: Boolean,
+    activityDate: LocalDate,
     onEdit: () -> Unit,
     onPostponeTomorrow: () -> Unit,
     onPostponePick: () -> Unit,
@@ -646,12 +681,13 @@ private fun ActivityMenu(
                 onClick = { menuOpen = false; onEdit() }
             )
             if (!isClosed) {
+                val target = MoveTarget.of(activityDate)
                 DropdownMenuItem(
-                    text = { Text("Amână pe mâine") },
+                    text = { Text(target.label) },
                     onClick = { menuOpen = false; onPostponeTomorrow() }
                 )
                 DropdownMenuItem(
-                    text = { Text("Amână pe altă zi…") },
+                    text = { Text(target.pickLabel) },
                     onClick = { menuOpen = false; onPostponePick() }
                 )
             }
@@ -1056,6 +1092,7 @@ private fun ActivityDialog(
     homePlaceId: Long?,
     calendarPlaces: Map<String, Long>,
     mealSlots: List<MealPlanner.Slot>,
+    dayWindow: Pair<Int, Int>,
     analysisOn: Boolean,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
@@ -1170,10 +1207,12 @@ private fun ActivityDialog(
 
         val busy = busyWithTravel
 
+        // între trezirea ta obișnuită (plus dimineața) și ora ta de culcare
+        val (dayStart, dayEnd) = dayWindow
         val earliest = if (day == today) {
             val now = LocalTime.now()
-            maxOf(7 * 60, now.hour * 60 + now.minute + 10)
-        } else 7 * 60
+            maxOf(dayStart, now.hour * 60 + now.minute + 10)
+        } else dayStart
 
         val duration = plannedMinutes ?: estimate?.minutes ?: 30
         // întâi din istoric; dacă nu avem destule date, măcar primul interval liber
@@ -1181,8 +1220,9 @@ private fun ActivityDialog(
             history = slotHistory,
             durationMinutes = duration,
             busy = busy,
-            earliestStart = earliest
-        ) ?: SlotRecommender.firstFree(duration, busy, earliest)
+            earliestStart = earliest,
+            latestEnd = dayEnd
+        ) ?: SlotRecommender.firstFree(duration, busy, earliest, dayEnd)
     }
 
     AlertDialog(
@@ -1651,13 +1691,20 @@ private fun PostponeDatePicker(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
-    val minDate = LocalDate.parse(fromDate).plusDays(1)
-    val minMillis = minDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    // de la azi încolo, oricare altă zi decât a ei (o activitate viitoare se poate muta și mai devreme)
+    val from = LocalDate.parse(fromDate)
+    val today = LocalDate.now()
+    val isToday = from == today
+    val minDate = today
+    val initial = MoveTarget.of(from, today).date
+    fun millis(d: LocalDate) = d.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    val minMillis = millis(minDate)
+    val ownMillis = millis(from)
 
     val state = rememberDatePickerState(
-        initialSelectedDateMillis = minMillis,
+        initialSelectedDateMillis = millis(initial),
         selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= minMillis
+            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= minMillis && utcTimeMillis != ownMillis
             override fun isSelectableYear(year: Int) = year >= minDate.year
         }
     )
@@ -1673,7 +1720,7 @@ private fun PostponeDatePicker(
                     }
                 },
                 enabled = state.selectedDateMillis != null
-            ) { Text("Amână") }
+            ) { Text(if (isToday) "Amână" else "Mută") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Anulează") }

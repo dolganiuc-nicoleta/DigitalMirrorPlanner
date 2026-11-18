@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import md.utm.digitalmirror.data.prefs.TravelPrefs
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import md.utm.digitalmirror.domain.MealPlanner
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -302,17 +304,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 3a'. mesele, ca ferestre flexibile
-            item {
-                Spacer(Modifier.height(4.dp))
-                SectionTitle("Mese")
-            }
-            item {
-                val meals by vm.meals.collectAsState()
-                MealsCard(meals = meals, onSave = { vm.saveMeal(it) })
-            }
-
-            // 3b. programul fix: cursuri, masă, somn, cu drumul inclus
+            // 3b. programul fix: ce se repetă la aceeași oră (cursuri, muncă), cu locul lui
             item {
                 Spacer(Modifier.height(4.dp))
                 SectionTitle("Program fix")
@@ -324,8 +316,8 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (rules.isEmpty()) {
-                            Text("Adaugă orele tale fixe: cursuri, masă, somn.")
-                            Hint("Recomandarea orei le ocolește, inclusiv drumul până la ele și de la ele.")
+                            Text("Adaugă ce se repetă la aceeași oră: muncă, antrenamente, cursuri care nu sunt în calendar.")
+                            Hint("Ce e deja în calendarul telefonului nu trebuie pus aici. Mesele au secțiunea lor, mai jos.")
                         }
                         rules.forEach { rule ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -384,6 +376,16 @@ fun SettingsScreen(
                         OutlinedButton(onClick = { showDayOffPicker = true }) { Text("Marchează o zi liberă") }
                     }
                 }
+            }
+
+            // 3c. mesele, ca ferestre flexibile (după ce e fix: ele se potrivesc printre cursuri și drumuri)
+            item {
+                Spacer(Modifier.height(4.dp))
+                SectionTitle("Mese")
+            }
+            item {
+                val meals by vm.meals.collectAsState()
+                MealsCard(meals = meals, onSave = { vm.saveMeal(it) })
             }
 
             // 4. calendarul
@@ -853,20 +855,26 @@ private fun MealsCard(meals: List<MealPlanner.Window>, onSave: (MealPlanner.Wind
         ) {
             Hint("Nu o oră fixă, ci o fereastră: aplicația găsește în fiecare zi un loc liber în ea și nu pune altceva acolo.")
             meals.forEach { w ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // tot rândul deschide editarea; în dreapta doar comutatorul
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable(enabled = w.enabled) { editing = w }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(Modifier.weight(1f)) {
                         Text("${w.kind.emoji} ${w.kind.label}")
                         if (w.enabled) {
-                            Hint(
-                                "${formatClock(w.from)}–${formatClock(w.to)} · ${w.minutes} min" +
-                                        if (w.optional) " · opțional" else ""
-                            )
+                            Hint("între ${formatClock(w.from)} și ${formatClock(w.to)}")
+                            Hint("${w.minutes} min" + if (w.optional) " · opțional" else "")
                         } else Hint("oprit")
                     }
-                    if (w.enabled) TextButton(onClick = { editing = w }) { Text("Editează") }
                     Switch(checked = w.enabled, onCheckedChange = { onSave(w.copy(enabled = it)) })
                 }
             }
+            Hint("Apasă pe o masă ca să-i schimbi fereastra sau durata.")
         }
     }
     editing?.let { w ->

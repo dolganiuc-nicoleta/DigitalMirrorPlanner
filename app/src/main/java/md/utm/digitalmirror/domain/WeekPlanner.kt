@@ -52,7 +52,9 @@ object WeekPlanner {
         val date: LocalDate,
         val busy: List<Busy>,                   // blocuri fixe, calendar, scenariu, activități deja puse
         val plannedMinutes: Int = 0,            // cât e deja planificat în acea zi (din busy sau fără oră)
-        val typicalMinutes: Int? = null         // cât reușește de obicei (DayLoad); null = nu știm
+        val typicalMinutes: Int? = null,        // cât reușește de obicei (DayLoad); null = nu știm
+        val dayStart: Int = DAY_START,          // după trezirea ta obișnuită și dimineață
+        val dayEnd: Int = DAY_END               // până la ora ta obișnuită de culcare
     ) {
         val budget: Int
             get() = typicalMinutes ?: if (DayLoad.isWeekend(date)) WEEKEND_BUDGET else WEEKDAY_BUDGET
@@ -145,9 +147,9 @@ object WeekPlanner {
                         else -> true
                     }
                 }.mapNotNull { day ->
-                    val start = if (day.date == today) maxOf(DAY_START, earliestToday) else DAY_START
+                    val start = if (day.date == today) maxOf(day.dayStart, earliestToday) else day.dayStart
                     val view = TravelGaps.expand(occupied.getValue(day.date), task.placeId, travel, margin)
-                    val slot = slotFor(task, size, view, start) ?: return@mapNotNull null
+                    val slot = slotFor(task, size, view, start, day.dayEnd) ?: return@mapNotNull null
                     Candidate(day, slot)
                 }
                 // „nu înainte de” e o dorință: dacă în fereastră nu mai e loc, mai bine mai devreme decât deloc
@@ -233,10 +235,10 @@ object WeekPlanner {
         fun over(added: Map<LocalDate, Int>, size: Int): Boolean = after(added, size) > 1.0
     }
 
-    private fun slotFor(task: Task, minutes: Int, busy: List<Busy>, earliest: Int): Pair<Int, Int>? {
-        val fromHistory = SlotRecommender.suggest(task.history, minutes, busy, earliest, DAY_END)
+    private fun slotFor(task: Task, minutes: Int, busy: List<Busy>, earliest: Int, latestEnd: Int): Pair<Int, Int>? {
+        val fromHistory = SlotRecommender.suggest(task.history, minutes, busy, earliest, latestEnd)
         if (fromHistory != null) return fromHistory.startMinute to fromHistory.endMinute
-        val free = SlotRecommender.firstFree(minutes, busy, earliest, DAY_END) ?: return null
+        val free = SlotRecommender.firstFree(minutes, busy, earliest, latestEnd) ?: return null
         return free.startMinute to free.endMinute
     }
 }

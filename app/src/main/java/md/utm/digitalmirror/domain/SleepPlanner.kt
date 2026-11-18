@@ -1,0 +1,112 @@
+package md.utm.digitalmirror.domain
+
+import kotlin.math.roundToInt
+
+/**
+ * Propune ora de trezire și ora de culcare, din somnul tău real și din cum arată ziua următoare.
+ *
+ *  - cât dormi de obicei = mediana nopților recente (Health Connect sau introdus de tine);
+ *  - te trezești la ora obișnuită, dar mai devreme dacă ziua începe devreme: înainte de primul lucru
+ *    (sau de pregătirea de plecare) trebuie să încapă dimineața ta ([MORNING_MINUTES]) și micul dejun;
+ *  - te culci cât să dormi cât dormi de obicei, plus timpul în care adormi ([FALL_ASLEEP_MINUTES]).
+ *
+ * Orele de după miezul nopții se scriu peste 24:00 (0:30 = 24 * 60 + 30), ca să se poată compara ușor.
+ * Nu depinde de Android, deci se poate testa cu teste unitare simple.
+ */
+object SleepPlanner {
+
+    const val DEFAULT_SLEEP_MINUTES = 8 * 60
+    const val DEFAULT_WAKE = 8 * 60
+    const val MORNING_MINUTES = 20           // te trezești, baie, cafea: înainte de orice altceva
+    const val FALL_ASLEEP_MINUTES = 15
+    const val MIN_NIGHTS = 3                 // de la câte nopți avem încredere în obiceiul tău
+    private const val DAY = 24 * 60
+
+    /** O noapte din istoric. [bedtime] și [wake] în minute de la miezul nopții. */
+    data class Night(val sleepMinutes: Int?, val bedtime: Int?, val wake: Int?)
+
+    enum class Reason {
+        USUAL,          // ora ta obișnuită de trezire încape
+        EARLY_START,    // ziua începe devreme: te trezești mai devreme decât de obicei
+        DEFAULT         // nu avem destule nopți: valori implicite
+    }
+
+    data class Plan(
+        val wake: Int,                // ora de trezire în ziua respectivă
+        val sleepMinutes: Int,        // cât dormi de obicei
+        val reason: Reason,
+        val nights: Int,              // pe câte nopți s-a calculat
+        val usualWake: Int?,
+        val usualBedtime: Int?        // peste 24:00 dacă e după miezul nopții
+    ) {
+        /** Ora de culcare din seara dinainte, ca să dormi [sleepMinutes]; poate fi peste 24:00 (seara de dinainte). */
+        val bedtimeBefore: Int get() = wake - sleepMinutes - FALL_ASLEEP_MINUTES + DAY
+    }
+
+    /**
+     * @param nights nopțile recente
+     * @param firstStart primul lucru din zi (sau începutul pregătirii de plecare), în minute; null = zi liberă
+     * @param breakfastMinutes micul dejun, dacă e pornit; se adaugă la dimineață
+     */
+    fun plan(nights: List<Night>, firstStart: Int?, breakfastMinutes: Int = 0): Plan {
+        val good = nights.filter(::plausible)
+        val sleeps = good.mapNotNull { it.sleepMinutes }
+        val wakes = good.mapNotNull { it.wake }
+        val beds = good.mapNotNull { it.bedtime }.map { if (it < 12 * 60) it + DAY else it }   // 0:30 → 24:30
+
+        val enough = sleeps.size >= MIN_NIGHTS
+        val sleep = if (enough) median(sleeps) else DEFAULT_SLEEP_MINUTES
+        val usualWake = if (wakes.size >= MIN_NIGHTS) median(wakes) else null
+        val usualBed = if (beds.size >= MIN_NIGHTS) median(beds) else null
+
+        val preferred = usualWake ?: DEFAULT_WAKE
+        val latest = firstStart?.let { it - MORNING_MINUTES - breakfastMinutes }
+
+        return if (latest != null && latest < preferred) {
+            Plan(roundDown(latest), sleep, Reason.EARLY_START, sleeps.size, usualWake, usualBed)
+        } else {
+            Plan(preferred, sleep, if (enough && usualWake != null) Reason.USUAL else Reason.DEFAULT, sleeps.size, usualWake, usualBed)
+        }
+    }
+
+    /**
+     * Intervalul în care se pot pune lucruri flexibile (sesiuni, activități noi): de la trezirea ta obișnuită
+     * plus dimineața, până la ora ta obișnuită de culcare. Așa o sarcină flexibilă nu te scoală mai devreme;
+     * doar lucrurile fixe (cursuri, programări) pot muta trezirea.
+     * Fără destule nopți: 8:20–23:00.
+     */
+    fun activeWindow(nights: List<Night>): Pair<Int, Int> {
+        val good = nights.filter(::plausible)
+        val wakes = good.mapNotNull { it.wake }
+        val beds = good.mapNotNull { it.bedtime }.map { if (it < 12 * 60) it + DAY else it }
+        val wake = if (wakes.size >= MIN_NIGHTS) median(wakes) else DEFAULT_WAKE
+        val bed = if (beds.size >= MIN_NIGHTS) median(beds) else DEFAULT_BEDTIME
+        val start = wake + MORNING_MINUTES
+        val end = bed.coerceAtMost(DAY)
+        // un ritm ciudat (date greșite) nu are voie să lase o zi aproape fără loc
+        return if (end - start >= 8 * 60) start to end else (DEFAULT_WAKE + MORNING_MINUTES) to DEFAULT_BEDTIME
+    }
+
+    const val DEFAULT_BEDTIME = 23 * 60
+
+    /** Ora scrisă ca pe ceas, și pentru valorile de peste 24:00. */
+    fun clock(minute: Int): String {
+        val m = ((minute % DAY) + DAY) % DAY
+        return "%d:%02d".format(m / 60, m % 60)
+    }
+
+    /**
+     * O noapte credibilă: între 4 și 14 ore. Aplicațiile de somn salvează uneori doar o bucată din noapte
+     * (de ex. 4:10–7:30, până confirmi în ele), iar o astfel de noapte ar strica ritmul tău obișnuit.
+     */
+    fun plausible(night: Night): Boolean = night.sleepMinutes?.let { it in 4 * 60..14 * 60 } ?: false
+
+    // la 5 minute, în jos: 6:47 → 6:45
+    private fun roundDown(minute: Int): Int = (minute / 5) * 5
+
+    private fun median(values: List<Int>): Int {
+        val sorted = values.sorted()
+        val mid = sorted.size / 2
+        return if (sorted.size % 2 == 1) sorted[mid] else ((sorted[mid - 1] + sorted[mid]) / 2.0).roundToInt()
+    }
+}

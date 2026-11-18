@@ -26,6 +26,7 @@ import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.PrepPlanner
 import md.utm.digitalmirror.domain.PrepTemplates
+import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.WeekPlanner
 import md.utm.digitalmirror.reminder.ActivityReminders
@@ -182,6 +183,8 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         val daysOff = availability.observeDaysOff().first().map { it.date }.toSet()
         val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in daysOff } else emptyList()
         val calendarPlaces = DayBusy.calendarPlaces(app)
+        // sesiunile stau între trezirea ta obișnuită (plus dimineața) și ora ta de culcare
+        val (dayStart, dayEnd) = SleepPlanner.activeWindow(DayBusy.recentNights(app, today))
 
         val inputs = days.map { date ->
             val fixed = repo.observeActivitiesForDate(date.toString()).first()
@@ -195,7 +198,7 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
             if (date.toString() in daysOff) busy += SlotRecommender.Busy(0, 24 * 60)
             val planned = fixed.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
             val typical = if (analysisOn) DayLoad.compute(0, totals, date).typicalMinutes else null
-            WeekPlanner.DayInput(date, busy, planned, typical)
+            WeekPlanner.DayInput(date, busy, planned, typical, dayStart, dayEnd)
         }
 
         val earliestToday = LocalTime.now().let { maxOf(8 * 60, it.hour * 60 + it.minute + 10) }

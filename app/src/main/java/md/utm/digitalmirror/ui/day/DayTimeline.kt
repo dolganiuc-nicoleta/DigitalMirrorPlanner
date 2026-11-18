@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.domain.MealPlanner
+import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.domain.TimelineGaps
 import md.utm.digitalmirror.domain.TimelineTravel
 import md.utm.digitalmirror.ui.components.formatDuration
@@ -49,6 +50,18 @@ sealed interface TimelineEntry {
         override val key: String get() = "t${leg.start}-${leg.fromPlaceId}-${leg.toPlaceId}"
     }
 
+    /** Trezirea propusă, primul rând al zilei. */
+    class Wake(val sleep: DayViewModel.SleepUi) : TimelineEntry {
+        override val startMinute: Int get() = sleep.today.wake
+        override val key: String get() = "wake"
+    }
+
+    /** Culcarea propusă, ultimul rând al zilei (poate fi după miezul nopții). */
+    class Bed(val sleep: DayViewModel.SleepUi) : TimelineEntry {
+        override val startMinute: Int get() = sleep.bedtime
+        override val key: String get() = "bed"
+    }
+
     /** O masă, în locul liber ales din fereastra ei. */
     class Meal(val meal: MealPlanner.Slot) : TimelineEntry {
         override val startMinute: Int get() = meal.start
@@ -59,6 +72,49 @@ sealed interface TimelineEntry {
     class Prep(val leg: TimelineTravel.Leg) : TimelineEntry {
         override val startMinute: Int get() = leg.prepStart
         override val key: String get() = "p${leg.start}-${leg.toPlaceId}"
+    }
+}
+
+/** „☀️ Trezire” cu explicația: ora ta obișnuită sau mai devreme, pentru că ziua începe devreme. */
+@Composable
+internal fun TimelineWakeItem(sleep: DayViewModel.SleepUi) {
+    val plan = sleep.today
+    val why = when (plan.reason) {
+        SleepPlanner.Reason.USUAL -> "ora ta obișnuită"
+        SleepPlanner.Reason.EARLY_START ->
+            "mai devreme decât de obicei, ca să ai timp de dimineață înainte de ${SleepPlanner.clock(sleep.firstStart ?: plan.wake)}"
+        SleepPlanner.Reason.DEFAULT -> "propunere de pornire; o potrivesc după ce aflu cum dormi"
+    }
+    SleepRow(emoji = "☀️", time = SleepPlanner.clock(plan.wake), title = "Trezire", subtitle = why)
+}
+
+/** „🌙 Culcare” cu explicația: cât dormi de obicei, până la trezirea de mâine. */
+@Composable
+internal fun TimelineBedItem(sleep: DayViewModel.SleepUi) {
+    val plan = sleep.tomorrow
+    val parts = mutableListOf(
+        "ca să dormi ~${formatDuration(plan.sleepMinutes)} până la trezirea de mâine, ${SleepPlanner.clock(plan.wake)}"
+    )
+    // mai devreme decât de obicei: spunem cu cât, ca să nu pară o oră oarecare
+    val usual = plan.usualBedtime
+    if (usual != null && usual - sleep.bedtime >= 30) {
+        parts += "cu ${formatDuration(usual - sleep.bedtime)} mai devreme decât de obicei (${SleepPlanner.clock(usual)})"
+    }
+    SleepRow(emoji = "🌙", time = SleepPlanner.clock(sleep.bedtime), title = "Culcare", subtitle = parts.joinToString(", "))
+}
+
+@Composable
+private fun SleepRow(emoji: String, time: String, title: String, subtitle: String) {
+    TimelineItem(
+        time = time,
+        marker = {
+            Text(emoji, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+        }
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

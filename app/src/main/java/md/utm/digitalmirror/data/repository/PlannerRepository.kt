@@ -97,7 +97,11 @@ class PlannerRepository(
 
     suspend fun getActivity(id: Long): Activity? = activityDao.getById(id)
 
-    suspend fun postponeActivity(activityId: Long, newDate: String) {
+    /**
+     * Mută activitatea pe altă zi. [countAsPostponed] = e o amânare (ziua ei a venit sau a trecut);
+     * mutarea unei activități dintr-o zi viitoare e doar o replanificare și nu se numără.
+     */
+    suspend fun postponeActivity(activityId: Long, newDate: String, countAsPostponed: Boolean = true) {
         // dacă rulează cronometrul pe ea, îl oprim întâi (se salvează timpul lucrat)
         sessionDao.getRunning()
             ?.takeIf { it.activityId == activityId }
@@ -108,7 +112,7 @@ class PlannerRepository(
             fresh.copy(
                 date = newDate,
                 state = if ((fresh.actualMinutes ?: 0) > 0) "IN_PROGRESS" else "PLANNED",
-                postponedCount = fresh.postponedCount + 1
+                postponedCount = fresh.postponedCount + if (countAsPostponed) 1 else 0
             )
         )
     }

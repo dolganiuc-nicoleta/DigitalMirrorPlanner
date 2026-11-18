@@ -21,4 +21,8 @@ interface DailyActivityDao {
 
     @Query("SELECT * FROM daily_activity ORDER BY date DESC")
     fun observeAll(): Flow<List<DailyActivity>>
+
+    /** Zilele dintre [from] și [to] inclusiv (somnul fiecăreia e din noaptea dinainte). */
+    @Query("SELECT * FROM daily_activity WHERE date >= :from AND date <= :to ORDER BY date")
+    suspend fun between(from: String, to: String): List<DailyActivity>
 }

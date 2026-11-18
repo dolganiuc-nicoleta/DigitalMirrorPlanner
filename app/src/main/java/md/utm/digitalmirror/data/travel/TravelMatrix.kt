@@ -9,6 +9,7 @@ import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DaySkeleton
+import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.domain.TimelineTravel
 import md.utm.digitalmirror.domain.SlotRecommender.Busy
 import md.utm.digitalmirror.domain.TitleKey
@@ -82,6 +83,28 @@ object DayBusy {
     /** Locul evenimentelor din calendar, după numele lor. */
     suspend fun calendarPlaces(context: Context): Map<String, Long> =
         AppDatabase.get(context).calendarPlaceDao().getAll().associate { it.titleKey to it.placeId }
+
+    /** Primul lucru din zi: o activitate, un eveniment, un bloc sau începutul pregătirii de plecare. */
+    fun firstStart(busy: List<Busy>, skeleton: DaySkeleton.Result): Int? =
+        (busy.map { it.start } + skeleton.legs.map { it.prepStart }).minOrNull()
+
+    /**
+     * Ce e ocupat într-o zi oarecare (activități, calendar, blocuri fixe), cu locul fiecăruia.
+     * Folosit pentru ziua de mâine, când propunem ora de culcare din seara asta.
+     */
+    suspend fun forDate(context: Context, date: LocalDate): List<Busy> {
+        val db = AppDatabase.get(context)
+        val activities = db.activityDao().observeByDate(date.toString()).first()
+        val daysOff = db.availabilityDao().observeDaysOff().first().map { it.date }.toSet()
+        return activities(activities) + calendar(context, date, calendarPlaces(context)) +
+                blocks(date, rules(context), daysOff)
+    }
+
+    /** Nopțile recente dinaintea zilei [date] (cel mult 28), pentru ritmul tău de somn. */
+    suspend fun recentNights(context: Context, date: LocalDate): List<SleepPlanner.Night> =
+        AppDatabase.get(context).dailyActivityDao()
+            .between(date.minusDays(28).toString(), date.minusDays(1).toString())
+            .map { SleepPlanner.Night(it.sleepMinutes, it.bedtimeMinute, it.wakeMinute) }
 
     /** Blocurile fixe din Setări, cu locul lor. */
     suspend fun rules(context: Context): List<Availability.Rule> =
