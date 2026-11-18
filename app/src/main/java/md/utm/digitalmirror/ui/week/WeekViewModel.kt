@@ -21,10 +21,13 @@ import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.WeekTask
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.data.travel.DayBusy
+import md.utm.digitalmirror.data.travel.TravelMatrix
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.CategoryGuess
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.PeriodReport
+import md.utm.digitalmirror.domain.PlaceGuess
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.WeekPlanner
@@ -81,6 +84,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
     private val weekDao = db.weekTaskDao()
     private val availability = db.availabilityDao()
     private val analysisOn = AnalysisPrefs.isEnabled(app)
+    private val travelMatrix = TravelMatrix(app)
 
     private val offset = MutableStateFlow(0)                 // 0 = săptămâna curentă, 1 = următoarea
     private val scope = MutableStateFlow(Scope.WEEK)
@@ -110,7 +114,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
                 rules.map {
                     Availability.Rule(
                         it.id, it.title, it.daysMask, it.startMinute, it.endMinute,
-                        it.travelBeforeMinutes, it.travelAfterMinutes
+                        it.travelBeforeMinutes, it.travelAfterMinutes, it.placeId
                     )
                 },
                 daysOff.map { it.date }.toSet(),
@@ -156,16 +160,15 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
 
         val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in d.daysOff } else emptyList()
         val earliestToday = LocalTime.now().let { maxOf(8 * 60, it.hour * 60 + it.minute + 10) }
+        val calendarPlaces = DayBusy.calendarPlaces(app)
 
         val inputs = planDays.map { date ->
             val busy = mutableListOf<SlotRecommender.Busy>()
             val activitiesToday = fixed.filter { it.date == date.toString() }
-            busy += activitiesToday.mapNotNull { a ->
-                a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) }
-            }
-            busy += CalendarReader.eventsFor(app, date).filter { it.busy }
-                .map { SlotRecommender.Busy(it.startMinute, it.endMinute) }
-            busy += Availability.blocksFor(date, d.rules, d.daysOff).map { SlotRecommender.Busy(it.busyStart, it.busyEnd) }
+            // cu locul fiecărui lucru, ca sesiunile să lase timp de drum
+            busy += DayBusy.activities(activitiesToday)
+            busy += DayBusy.calendar(app, date, calendarPlaces)
+            busy += DayBusy.blocks(date, d.rules, d.daysOff)
             busy += scenario.blocks.filter { it.date == date }.map { SlotRecommender.Busy(it.fromMinute, it.toMinute) }
             if (date.toString() in d.daysOff) busy += SlotRecommender.Busy(0, 24 * 60)
 
@@ -176,6 +179,11 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
 
         // rata de reușită din ultimele 4 săptămâni (doar cu analiza pornită și destule date)
         val successRate = if (analysisOn) successRate(today) else null
+
+        // unde se lucrează la fiecare sarcină: ghicit din titlu, altfel acasă
+        val placeList = db.placeDao().getAll().map { PlaceGuess.Named(it.id, it.name) }
+        val home = travelMatrix.homePlaceId
+        fun placeFor(t: WeekTask): Long? = PlaceGuess.guess(t.title, placeList, emptyList()) ?: home
 
         val planTasks = d.tasks.mapNotNull { t ->
             val need = when (scopeNow) {
@@ -190,11 +198,16 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
                 sessionMinutes = t.sessionMinutes,
                 deadline = t.deadline?.let(LocalDate::parse),
                 pinnedDate = t.pinnedDate?.let(LocalDate::parse),
-                history = t.categoryId?.let { repo.slotHistory(it) }.orEmpty()
+                history = t.categoryId?.let { repo.slotHistory(it) }.orEmpty(),
+                placeId = placeFor(t)
             )
         }
 
-        val plan = WeekPlanner.plan(planTasks, inputs, successRate, earliestToday, today)
+        val travel = travelMatrix.forPlanning(
+            planTasks.mapNotNull { it.placeId },
+            inputs.flatMap { day -> day.busy.mapNotNull { it.placeId } }
+        )
+        val plan = WeekPlanner.plan(planTasks, inputs, successRate, earliestToday, today, travel)
 
         // zilele săptămânii, pentru grilă
         val dayResults = plan.days.associateBy { it.date }
@@ -335,7 +348,10 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun insertSession(task: WeekTask, date: LocalDate, start: Int?, minutes: Int): Int {
+        // locul se salvează doar când e ghicit din titlu („acasă” rămâne doar o presupunere pentru drum)
+        val placeId = PlaceGuess.guess(task.title, db.placeDao().getAll().map { PlaceGuess.Named(it.id, it.name) }, emptyList())
         val activity = Activity(
+            placeId = placeId,
             title = task.title,
             categoryId = task.categoryId,
             date = date.toString(),

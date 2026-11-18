@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import md.utm.digitalmirror.data.prefs.TravelPrefs
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -285,6 +286,19 @@ fun SettingsScreen(
                         OutlinedButton(onClick = onOpenPlaces) { Text("Gestionează locurile") }
                     }
                 }
+            }
+            // acasă și pregătirea de plecare: de aici pornesc toate drumurile
+            item {
+                val places by vm.places.collectAsState()
+                val home by vm.home.collectAsState()
+                val prep by vm.prepMinutes.collectAsState()
+                HomeAndPrepCard(
+                    places = places,
+                    homeId = home,
+                    prepMinutes = prep,
+                    onHome = { vm.setHome(it) },
+                    onPrep = { vm.setPrepMinutes(it) }
+                )
             }
 
             // 3b. programul fix: cursuri, masă, somn, cu drumul inclus
@@ -763,6 +777,53 @@ private fun PlaceChoice(
             places.forEach { place ->
                 DropdownMenuItem(text = { Text(place.name) }, onClick = { onSelect(place.id); expanded = false })
             }
+        }
+    }
+}
+
+/**
+ * Locul „acasă” (de unde pleci și unde te întorci) și cât îți ia să ieși din casă.
+ * Pregătirea se adaugă doar la plecările de acasă: între alte locuri ești deja gata de drum.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HomeAndPrepCard(
+    places: List<Place>,
+    homeId: Long?,
+    prepMinutes: Int,
+    onHome: (Long?) -> Unit,
+    onPrep: (Int) -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Acasă și plecarea")
+            if (places.isEmpty()) {
+                Hint("Adaugă întâi locurile tale, apoi alege care e „acasă”.")
+            } else {
+                PlaceChoice(
+                    label = "Acasă",
+                    none = "nealeasă",
+                    places = places,
+                    selectedId = homeId?.takeIf { id -> places.any { it.id == id } },
+                    onSelect = onHome
+                )
+                Hint("Când nu ai nimic planificat, aplicația presupune că ești acasă și calculează drumurile de aici.")
+            }
+
+            Text("Cât îți ia să ieși din casă?", modifier = Modifier.padding(top = 4.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TravelPrefs.PREP_CHOICES.forEach { minutes ->
+                    FilterChip(
+                        selected = prepMinutes == minutes,
+                        onClick = { onPrep(minutes) },
+                        label = { Text("$minutes min") }
+                    )
+                }
+            }
+            Hint("Îmbrăcat, geantă, încălțat. Se adaugă înaintea fiecărui drum de acasă.")
         }
     }
 }

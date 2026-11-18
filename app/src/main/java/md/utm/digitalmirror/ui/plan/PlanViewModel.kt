@@ -17,7 +17,8 @@ import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
-import md.utm.digitalmirror.data.travel.TravelRepository
+import md.utm.digitalmirror.data.travel.DayBusy
+import md.utm.digitalmirror.data.travel.TravelMatrix
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.CategoryGuess
 import md.utm.digitalmirror.domain.DayPlanner
@@ -67,7 +68,7 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
     private val repo = PlannerRepository(db.activityDao(), db.categoryDao(), db.workSessionDao())
     private val analysisOn = AnalysisPrefs.isEnabled(app)
-    private val travelRepo = TravelRepository(app)
+    private val travelMatrix = TravelMatrix(app)
 
     /** Locurile salvate, pentru lista „Loc” de la fiecare activitate. */
     val places: StateFlow<List<Place>> = db.placeDao().observeAll()
@@ -245,44 +246,16 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         )
     }
 
-    // drumurile deja calculate în această sesiune, ca schimbările mici să nu ceară din nou rețeaua
-    private val travelCache = mutableMapOf<Pair<Long, Long>, Int?>()
-
     /** Drumurile dintre locurile activităților noi și locurile a ce e deja ocupat. */
-    private suspend fun travelFor(candidates: List<Long>, busyPlaces: List<Long>): TravelGaps.Travel {
-        val pairs = TravelGaps.pairsNeeded(candidates.toSet(), busyPlaces.toSet())
-        val missing = pairs - travelCache.keys
-        if (missing.isNotEmpty()) {
-            val found = travelRepo.minutesFor(missing, TravelPrefs.mode(app))
-            missing.forEach { travelCache[it] = found[it] }
-        }
-        val known = travelCache.toMap()
-        return TravelGaps.Travel { from, to -> known[from to to] }
-    }
+    private suspend fun travelFor(candidates: List<Long>, busyPlaces: List<Long>): TravelGaps.Travel =
+        travelMatrix.forPlanning(candidates, busyPlaces)
 
     // activități, calendar și blocuri fixe din ziua aleasă, cu locul lor (pentru drum)
     private suspend fun busyFor(date: LocalDate): List<SlotRecommender.Busy> {
-        val activities = repo.observeActivitiesForDate(date.toString()).first()
-            .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
-            .mapNotNull { a ->
-                a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30), a.placeId) }
-            }
-        // evenimentele din calendar, cu locul ales pentru numele lor (pentru drum)
-        val calendarPlaces = db.calendarPlaceDao().getAll().associate { it.titleKey to it.placeId }
-        val calendar = CalendarReader.eventsFor(app, date).filter { it.busy }
-            .map { SlotRecommender.Busy(it.startMinute, it.endMinute, calendarPlaces[TitleKey.of(it.title)]) }
-
-        val availability = db.availabilityDao()
-        val rules = availability.observeRules().first().map {
-            Availability.Rule(
-                it.id, it.title, it.daysMask, it.startMinute, it.endMinute,
-                it.travelBeforeMinutes, it.travelAfterMinutes, it.placeId
-            )
-        }
-        val daysOff = availability.observeDaysOff().first().map { it.date }.toSet()
-        // fără drum inclus: drumul se calculează după locul activității noi (drumul fix rămâne rezervă)
-        val blocks = Availability.blocksFor(date, rules, daysOff).map { it.asBusy() }
-
+        val activities = DayBusy.activities(repo.observeActivitiesForDate(date.toString()).first())
+        val calendar = DayBusy.calendar(app, date, DayBusy.calendarPlaces(app))
+        val daysOff = db.availabilityDao().observeDaysOff().first().map { it.date }.toSet()
+        val blocks = DayBusy.blocks(date, DayBusy.rules(app), daysOff)
         return activities + calendar + blocks
     }
 

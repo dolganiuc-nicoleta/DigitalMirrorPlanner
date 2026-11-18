@@ -295,7 +295,7 @@ fun DayScreen(
                                 if (it.placeId != null) SlotRecommender.Busy(it.start, it.end)
                                 else SlotRecommender.Busy(it.busyStart, it.busyEnd)
                             } +
-                            legs.map { SlotRecommender.Busy(it.start, it.end) }
+                            legs.map { SlotRecommender.Busy(it.prepStart, it.end) }
                     TimelineGaps.compute(busy, from, 22 * 60)
                 } else emptyList()
 
@@ -307,7 +307,8 @@ fun DayScreen(
                         gaps.map { TimelineEntry.Gap(it) } +
                         legs.map { leg ->
                             TimelineEntry.Travel(leg, places.find { it.id == leg.toPlaceId }?.name ?: "alt loc")
-                        })
+                        } +
+                        legs.filter { it.prepMinutes > 0 }.map { TimelineEntry.Prep(it) })
                     .sortedBy { it.startMinute }
 
                 val activityRow: @Composable (Activity) -> Unit = { activity ->
@@ -342,6 +343,10 @@ fun DayScreen(
                             places = places,
                             calendarPlaces = calendarPlaces,
                             onSetPlace = { title, placeId -> vm.setCalendarPlace(title, placeId) }
+                        )
+                        is TimelineEntry.Prep -> TimelinePrepItem(
+                            leg = entry.leg,
+                            startLabel = formatMinute(entry.leg.prepStart)
                         )
                         is TimelineEntry.Travel -> TimelineTravelItem(
                             leg = entry.leg,
@@ -1129,7 +1134,11 @@ private fun ActivityDialog(
                 if (b.end <= start) TravelGaps.needed(b.placeId, travelPlaceId, travel) ?: b.travelAfter
                 else TravelGaps.needed(travelPlaceId, b.placeId, travel) ?: b.travelBefore
             },
-            afterIt = near != null && near.end <= start
+            afterIt = near != null && near.end <= start,
+            // plecarea e de acasă: drumul include și pregătirea
+            withPrep = near != null && homePlaceId != null &&
+                    (if (near.end <= start) near.placeId else travelPlaceId) == homePlaceId &&
+                    near.placeId != travelPlaceId
         )
     }
 
@@ -1546,7 +1555,8 @@ private class TravelFix(
     val moveTo: Int,
     val placeName: String?,     // locul de lângă care e drumul, dacă îl știm
     val minutes: Int?,          // drumul cu tot cu marjă
-    val afterIt: Boolean        // drumul e de la acel loc (true) sau până la el (false)
+    val afterIt: Boolean,       // drumul e de la acel loc (true) sau până la el (false)
+    val withPrep: Boolean = false   // pleci de acasă, deci [minutes] include și pregătirea
 )
 
 // caseta „nu ai timp de drum”, cu propunerea unei ore potrivite
@@ -1567,11 +1577,12 @@ private fun TravelFixHint(fix: TravelFix, onMove: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
+                val extra = if (fix.withPrep) "cu pregătirea și marja" else "cu tot cu marja"
                 val road = when {
                     fix.placeName != null && fix.minutes != null ->
                         (if (fix.afterIt) "De la ${fix.placeName}" else "Până la ${fix.placeName}") +
-                                " ai ~${formatDuration(fix.minutes)} cu tot cu marja."
-                    fix.minutes != null -> "Drumul durează ~${formatDuration(fix.minutes)} cu tot cu marja."
+                                " ai ~${formatDuration(fix.minutes)}, $extra."
+                    fix.minutes != null -> "Drumul durează ~${formatDuration(fix.minutes)}, $extra."
                     else -> null
                 }
                 Text(

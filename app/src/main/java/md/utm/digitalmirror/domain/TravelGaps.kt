@@ -28,6 +28,15 @@ object TravelGaps {
     val NONE = Travel { _, _ -> null }
 
     /**
+     * Drumurile, cu timpul de pregătire adăugat la fiecare plecare de acasă (îmbrăcat, geantă).
+     * Între alte locuri ești deja gata de drum, deci acolo nu se adaugă nimic.
+     */
+    fun withPrep(travel: Travel, home: Long?, prepMinutes: Int): Travel {
+        if (home == null || prepMinutes <= 0) return travel
+        return Travel { from, to -> travel.minutes(from, to)?.let { if (from == home) it + prepMinutes else it } }
+    }
+
+    /**
      * Drumul necesar între două locuri, cu marjă.
      * null = nu se poate calcula (lipsește un loc sau drumul), 0 = același loc.
      */

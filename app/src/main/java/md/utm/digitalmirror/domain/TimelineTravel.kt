@@ -23,7 +23,8 @@ object TimelineTravel {
 
     /**
      * Un drum pe linia de timp. [travelMinutes] e drumul fără marjă; intervalul [start]–[end] include marja.
-     * [tight] = nu încape: ar trebui să pleci înainte să se termine lucrul de dinainte.
+     * La plecările de acasă, înainte de drum vine pregătirea: [prepMinutes], de la [prepStart] la [start].
+     * [tight] = nu încape: ar trebui să pleci (sau să te pregătești) înainte să se termine lucrul de dinainte.
      */
     data class Leg(
         val start: Int,
@@ -31,8 +32,11 @@ object TimelineTravel {
         val fromPlaceId: Long,
         val toPlaceId: Long,
         val travelMinutes: Int,
-        val tight: Boolean = false
-    )
+        val tight: Boolean = false,
+        val prepMinutes: Int = 0
+    ) {
+        val prepStart: Int get() = start - prepMinutes
+    }
 
     /** Perechile de locuri pentru care avem nevoie de drum, ca să le calculăm din timp. */
     fun pairsNeeded(stops: List<Stop>, home: Long?): Set<Pair<Long, Long>> {
@@ -50,22 +54,29 @@ object TimelineTravel {
         return pairs
     }
 
+    /** @param prepMinutes cât îți ia să te pregătești de plecare; se adaugă doar la plecările de acasă */
     fun legs(
         stops: List<Stop>,
         home: Long?,
         travel: TravelGaps.Travel,
-        margin: Int = TravelGaps.DEFAULT_MARGIN
+        margin: Int = TravelGaps.DEFAULT_MARGIN,
+        prepMinutes: Int = 0
     ): List<Leg> {
         val ordered = stops.sortedBy { it.start }
         if (ordered.isEmpty()) return emptyList()
         val legs = mutableListOf<Leg>()
 
-        // pleci de acasă: ajungi la începutul lucrului
+        // ajungi la începutul lucrului; de acasă, cu pregătirea înainte
         fun arrive(from: Long, to: Stop, notBefore: Int?): Leg? {
             val t = travel.minutes(from, to.placeId) ?: return null
+            val prep = if (from == home) prepMinutes else 0
             val wanted = to.start - t - margin
-            val start = if (notBefore != null) maxOf(wanted, notBefore) else maxOf(wanted, 0)
-            return Leg(start, to.start, from, to.placeId, t, tight = notBefore != null && wanted < notBefore)
+            val start = if (notBefore != null) maxOf(wanted, notBefore + prep) else maxOf(wanted, prep)
+            return Leg(
+                start, to.start, from, to.placeId, t,
+                tight = notBefore != null && wanted - prep < notBefore,
+                prepMinutes = prep
+            )
         }
 
         // pleci imediat după lucru
@@ -86,7 +97,7 @@ object TimelineTravel {
                 val toHome = travel.minutes(a.placeId, home)
                 val fromHome = travel.minutes(home, b.placeId)
                 if (toHome != null && fromHome != null &&
-                    gap >= toHome + fromHome + 2 * margin + MIN_HOME_STAY
+                    gap >= toHome + fromHome + 2 * margin + prepMinutes + MIN_HOME_STAY
                 ) {
                     leave(a, home)?.let { legs += it }
                     arrive(home, b, a.end)?.let { legs += it }

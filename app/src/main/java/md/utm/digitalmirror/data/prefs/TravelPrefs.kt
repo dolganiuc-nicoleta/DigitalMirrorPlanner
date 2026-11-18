@@ -22,7 +22,21 @@ object TravelPrefs {
     fun homePlaceId(context: Context): Long? =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(KEY_HOME, -1L).takeIf { it > 0 }
 
-    fun setHomePlaceId(context: Context, id: Long) {
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putLong(KEY_HOME, id).apply()
+    fun setHomePlaceId(context: Context, id: Long?) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putLong(KEY_HOME, id ?: -1L).apply()
     }
+
+    /** Variantele propuse pentru „Cât îți ia să ieși din casă?”. */
+    val PREP_CHOICES = listOf(5, 10, 15, 20, 30)
+    const val DEFAULT_PREP_MINUTES = 15
+
+    /** Cât îți ia să te pregătești de plecare (îmbrăcat, geantă), înainte de drumul de acasă. */
+    fun prepMinutes(context: Context): Int =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_PREP, DEFAULT_PREP_MINUTES)
+
+    fun setPrepMinutes(context: Context, minutes: Int) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putInt(KEY_PREP, minutes.coerceIn(0, 120)).apply()
+    }
+
+    private const val KEY_PREP = "prep_minutes"
 }

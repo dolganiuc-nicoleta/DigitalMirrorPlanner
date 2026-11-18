@@ -20,6 +20,8 @@ import md.utm.digitalmirror.data.entity.PrepEvent
 import md.utm.digitalmirror.data.entity.PrepStep
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.data.travel.DayBusy
+import md.utm.digitalmirror.data.travel.TravelMatrix
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.PrepPlanner
@@ -68,6 +70,7 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
     private val repo = PlannerRepository(db.activityDao(), db.categoryDao(), db.workSessionDao())
     private val availability = db.availabilityDao()
     private val analysisOn = AnalysisPrefs.isEnabled(app)
+    private val travelMatrix = TravelMatrix(app)
 
     // ---- lista evenimentelor ----
 
@@ -159,6 +162,8 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         }.filter { it.second > 0 }
         if (remaining.isEmpty()) return Outcome(0, 0, null, false)
 
+        // pregătirea se face de obicei acasă: sesiunile lasă timp de drum față de ce e în alt loc
+        val home = travelMatrix.homePlaceId
         val windows = PrepPlanner.windows(days, remaining.map { it.second })
         val tasks = remaining.mapIndexed { index, (step, minutes) ->
             WeekPlanner.Task(
@@ -167,27 +172,24 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
                 totalMinutes = minutes,
                 sessionMinutes = minOf(minutes, SESSION_MINUTES),
                 deadline = windows[index].to,
-                notBefore = windows[index].from
+                notBefore = windows[index].from,
+                placeId = home
             )
         }
 
-        // ce e deja ocupat în fiecare zi
-        val rules = availability.observeRules().first().map {
-            Availability.Rule(
-                it.id, it.title, it.daysMask, it.startMinute, it.endMinute,
-                it.travelBeforeMinutes, it.travelAfterMinutes
-            )
-        }
+        // ce e deja ocupat în fiecare zi, cu locul fiecărui lucru
+        val rules = DayBusy.rules(app)
         val daysOff = availability.observeDaysOff().first().map { it.date }.toSet()
         val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in daysOff } else emptyList()
+        val calendarPlaces = DayBusy.calendarPlaces(app)
 
         val inputs = days.map { date ->
             val fixed = repo.observeActivitiesForDate(date.toString()).first()
                 .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
             val busy = mutableListOf<SlotRecommender.Busy>()
-            busy += fixed.mapNotNull { a -> a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) } }
-            busy += CalendarReader.eventsFor(app, date).filter { it.busy }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) }
-            busy += Availability.blocksFor(date, rules, daysOff).map { SlotRecommender.Busy(it.busyStart, it.busyEnd) }
+            busy += DayBusy.activities(fixed)
+            busy += DayBusy.calendar(app, date, calendarPlaces)
+            busy += DayBusy.blocks(date, rules, daysOff)
             if (date.toString() in daysOff) busy += SlotRecommender.Busy(0, 24 * 60)
             val planned = fixed.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
             val typical = if (analysisOn) DayLoad.compute(0, totals, date).typicalMinutes else null
@@ -195,7 +197,8 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         }
 
         val earliestToday = LocalTime.now().let { maxOf(8 * 60, it.hour * 60 + it.minute + 10) }
-        val plan = WeekPlanner.plan(tasks, inputs, null, earliestToday, today)
+        val travel = travelMatrix.forPlanning(listOfNotNull(home), inputs.flatMap { day -> day.busy.mapNotNull { it.placeId } })
+        val plan = WeekPlanner.plan(tasks, inputs, null, earliestToday, today, travel)
 
         for (s in plan.sessions) {
             val activity = Activity(

@@ -171,6 +171,23 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun homePlaceId(): Long? = TravelPrefs.homePlaceId(app)
 
+    // locul „acasă” și timpul de pregătire de plecare, arătate în Setări
+    private val _home = MutableStateFlow(TravelPrefs.homePlaceId(app))
+    val home: StateFlow<Long?> = _home
+
+    fun setHome(placeId: Long?) {
+        TravelPrefs.setHomePlaceId(app, placeId)
+        _home.value = placeId
+    }
+
+    private val _prepMinutes = MutableStateFlow(TravelPrefs.prepMinutes(app))
+    val prepMinutes: StateFlow<Int> = _prepMinutes
+
+    fun setPrepMinutes(minutes: Int) {
+        TravelPrefs.setPrepMinutes(app, minutes)
+        _prepMinutes.value = minutes
+    }
+
     /**
      * Drumul de la locul de plecare până la bloc și înapoi, în minute (înainte, după),
      * cu modul de deplasare ales în Locuri. Se reține locul de plecare pentru data viitoare.
@@ -179,7 +196,7 @@ class SettingsViewModel(private val app: Application) : AndroidViewModel(app) {
         val all = places.value
         val from = all.find { it.id == fromId } ?: return Result.failure(IllegalStateException("Alege de unde pleci."))
         val to = all.find { it.id == blockPlaceId } ?: return Result.failure(IllegalStateException("Alege locul blocului."))
-        TravelPrefs.setHomePlaceId(app, from.id)
+        setHome(from.id)
         val mode = TravelPrefs.mode(app)
         val there = travel.estimate(from, to, mode).getOrElse { return Result.failure(it) }
         val back = travel.estimate(to, from, mode).getOrElse { return Result.failure(it) }

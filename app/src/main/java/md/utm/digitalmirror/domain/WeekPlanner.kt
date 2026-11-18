@@ -44,7 +44,8 @@ object WeekPlanner {
         val deadline: LocalDate? = null,        // ultima zi în care sesiunile mai au voie
         val pinnedDate: LocalDate? = null,      // toate sesiunile pe această zi
         val history: List<SlotRecommender.Outcome> = emptyList(),
-        val notBefore: LocalDate? = null        // prima zi în care sesiunile au voie (folosit la pregătirea unui eveniment)
+        val notBefore: LocalDate? = null,       // prima zi în care sesiunile au voie (folosit la pregătirea unui eveniment)
+        val placeId: Long? = null               // unde se lucrează (de obicei acasă); contează pentru drum
     )
 
     data class DayInput(
@@ -106,13 +107,16 @@ object WeekPlanner {
      * @param days zilele din care se poate alege (de obicei de azi până duminică), în ordine
      * @param successRate rata cu care reușește de obicei (0–1); null = valoarea implicită
      * @param earliestToday cel mai devreme minut de start în prima zi (ora curentă), dacă prima zi e azi
+     * @param travel drumurile dintre locuri: o sesiune lasă timp de drum față de ce e în alt loc ([TravelGaps])
      */
     fun plan(
         tasks: List<Task>,
         days: List<DayInput>,
         successRate: Double? = null,
         earliestToday: Int = DAY_START,
-        today: LocalDate? = null
+        today: LocalDate? = null,
+        travel: TravelGaps.Travel = TravelGaps.NONE,
+        margin: Int = TravelGaps.DEFAULT_MARGIN
     ): Plan {
         val rate = (successRate ?: DEFAULT_SUCCESS_RATE).coerceIn(MIN_RATE, MAX_RATE)
         val occupied = days.associate { it.date to it.busy.toMutableList() }
@@ -142,7 +146,8 @@ object WeekPlanner {
                     }
                 }.mapNotNull { day ->
                     val start = if (day.date == today) maxOf(DAY_START, earliestToday) else DAY_START
-                    val slot = slotFor(task, size, occupied.getValue(day.date), start) ?: return@mapNotNull null
+                    val view = TravelGaps.expand(occupied.getValue(day.date), task.placeId, travel, margin)
+                    val slot = slotFor(task, size, view, start) ?: return@mapNotNull null
                     Candidate(day, slot)
                 }
                 // „nu înainte de” e o dorință: dacă în fereastră nu mai e loc, mai bine mai devreme decât deloc
@@ -164,7 +169,7 @@ object WeekPlanner {
                 } else {
                     val (start, end) = best.slot
                     sessions += Session(task.id, task.title, best.day.date, start, end, task.pinnedDate != null)
-                    occupied.getValue(best.day.date) += Busy(start, end)
+                    occupied.getValue(best.day.date) += Busy(start, end, task.placeId)
                     added[best.day.date] = added.getValue(best.day.date) + size
                     perTaskDay.merge(task.id to best.day.date, 1, Int::plus)
                 }

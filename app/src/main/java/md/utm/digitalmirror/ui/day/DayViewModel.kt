@@ -86,7 +86,10 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
      * Ce e deja calculat vine de pe telefon; restul se cere o singură dată.
      */
     suspend fun travelFor(placeId: Long, busyPlaces: Collection<Long>): TravelGaps.Travel =
-        travelBetween(TravelGaps.pairsNeeded(listOf(placeId), busyPlaces))
+        TravelGaps.withPrep(
+            travelBetween(TravelGaps.pairsNeeded(listOf(placeId), busyPlaces)),
+            homePlaceId, TravelPrefs.prepMinutes(app)
+        )
 
     /** Drumurile pentru perechile date; ce e deja calculat vine de pe telefon, restul se cere o singură dată. */
     private suspend fun travelBetween(pairs: Set<Pair<Long, Long>>): TravelGaps.Travel {
@@ -294,7 +297,7 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             if (stops.isEmpty() || LocalDate.parse(date).isBefore(LocalDate.now())) return@mapLatest emptyList()
             val home = homePlaceId
             val travel = travelBetween(TimelineTravel.pairsNeeded(stops, home))
-            TimelineTravel.legs(stops, home, travel)
+            TimelineTravel.legs(stops, home, travel, prepMinutes = TravelPrefs.prepMinutes(app))
                 .filter { leg -> manual.none { (s, e) -> s < leg.end && leg.start < e } }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     }

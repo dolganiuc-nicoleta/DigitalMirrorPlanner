@@ -84,6 +84,35 @@ class TimelineTravelTest {
     }
 
     @Test
+    fun `pregatirea de plecare vine inaintea drumului de acasa`() {
+        val stops = listOf(Stop(h(15, 15), h(16, 45), UNI))
+        val legs = TimelineTravel.legs(stops, HOME, travel, margin = 10, prepMinutes = 20)
+        val out = legs.first { it.fromPlaceId == HOME }
+        assertEquals(h(14, 30), out.start)          // plecarea, ca înainte
+        assertEquals(h(14, 10), out.prepStart)      // pregătirea începe cu 20 min mai devreme
+        // la întoarcere nu e nevoie de pregătire
+        assertEquals(0, legs.first { it.toPlaceId == HOME }.prepMinutes)
+    }
+
+    @Test
+    fun `intre doua locuri din afara casei nu e pregatire`() {
+        val stops = listOf(Stop(h(8), h(15), UNI), Stop(h(16), h(17), GYM))
+        val direct = TimelineTravel.legs(stops, HOME, travel, margin = 10, prepMinutes = 20)
+            .single { it.fromPlaceId == UNI && it.toPlaceId == GYM }
+        assertEquals(0, direct.prepMinutes)
+    }
+
+    @Test
+    fun `planificarea lasa timp si de pregatire inainte de plecare`() {
+        // o activitate de acasă înainte de cursurile de la 15:15: se termină la 14:10, nu la 14:30
+        val withPrep = TravelGaps.withPrep(travel, HOME, 20)
+        val view = TravelGaps.expand(
+            listOf(SlotRecommender.Busy(h(15, 15), h(16, 45), UNI)), HOME, withPrep, margin = 10
+        )
+        assertEquals(h(14, 10), view.single().start)
+    }
+
+    @Test
     fun `perechile necesare`() {
         val stops = listOf(Stop(h(8), h(12), UNI), Stop(h(18), h(19), GYM))
         val pairs = TimelineTravel.pairsNeeded(stops, HOME)

@@ -46,6 +46,40 @@ sealed interface TimelineEntry {
         override val startMinute: Int get() = leg.start
         override val key: String get() = "t${leg.start}-${leg.fromPlaceId}-${leg.toPlaceId}"
     }
+
+    /** Pregătirea de plecare de acasă, chiar înaintea drumului. */
+    class Prep(val leg: TimelineTravel.Leg) : TimelineEntry {
+        override val startMinute: Int get() = leg.prepStart
+        override val key: String get() = "p${leg.start}-${leg.toPlaceId}"
+    }
+}
+
+/** „Pregătire de plecare · 15 min”: îmbrăcat, geantă, încălțat. */
+@Composable
+internal fun TimelinePrepItem(leg: TimelineTravel.Leg, startLabel: String) {
+    TimelineItem(
+        time = startLabel,
+        marker = {
+            Text(
+                "🧥",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text(
+                "Pregătire de plecare",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "~${formatDuration(leg.prepMinutes)} · îmbrăcat, geantă",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 /** Un drum: „Drum spre Facultate · ~35 min (+10 marjă)”; cu avertisment când nu încape. */

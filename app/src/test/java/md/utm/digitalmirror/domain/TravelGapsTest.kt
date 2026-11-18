@@ -127,6 +127,21 @@ class TravelGapsTest {
     }
 
     @Test
+    fun `planul pe saptamana lasa timp de drum dupa cursuri`() {
+        val day = java.time.LocalDate.of(2026, 11, 18)
+        // cursurile 15:15–18:30 la facultate; ziua până la 22:00, deci locul e doar după cursuri
+        val busy = listOf(Busy(h(8), h(15, 15)), Busy(h(15, 15), h(18, 30), UNI))
+        val plan = WeekPlanner.plan(
+            tasks = listOf(WeekPlanner.Task(1, "Licență", 90, 90, placeId = HOME)),
+            days = listOf(WeekPlanner.DayInput(day, busy)),
+            travel = travel,
+            margin = 10
+        )
+        // 18:30 + 35 drum + 10 marjă = 19:15
+        assertEquals(h(19, 15), plan.sessions.single().startMinute)
+    }
+
+    @Test
     fun `perechile necesare includ ambele sensuri`() {
         val pairs = TravelGaps.pairsNeeded(listOf(GYM), listOf(UNI))
         assertEquals(setOf(GYM to UNI, UNI to GYM), pairs)

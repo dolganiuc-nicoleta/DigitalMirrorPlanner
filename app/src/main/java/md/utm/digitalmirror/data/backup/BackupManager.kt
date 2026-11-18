@@ -9,6 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import md.utm.digitalmirror.data.db.AppDatabase
+import md.utm.digitalmirror.data.prefs.TravelPrefs
+import md.utm.digitalmirror.domain.TravelEstimator
 import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.reminder.ReminderPrefs
 import md.utm.digitalmirror.reminder.ReminderScheduler
@@ -97,7 +99,11 @@ object BackupManager {
                 .put("pattern", OnboardingPrefs.pattern(context).name)
                 .put("reminderEnabled", ReminderPrefs.isEnabled(context))
                 .put("reminderMinute", ReminderPrefs.minuteOfDay(context))
-                .put("accent", ThemeSettings.accent.name))
+                .put("accent", ThemeSettings.accent.name)
+                // drumurile: modul de deplasare, locul „acasă” (id-urile se păstrează) și pregătirea de plecare
+                .put("travelMode", TravelPrefs.mode(context).name)
+                .put("homePlaceId", TravelPrefs.homePlaceId(context) ?: JSONObject.NULL)
+                .put("prepMinutes", TravelPrefs.prepMinutes(context)))
             .put("tables", tables)
 
         root.toString() to rows
@@ -177,6 +183,10 @@ object BackupManager {
             // culoarea aplicației urmează contul (copiile mai vechi nu o au, atunci rămâne cea de acum)
             runCatching { Accent.valueOf(p.getString("accent")) }
                 .getOrNull()?.let { ThemeSettings.setAccent(context, it) }
+            // setările de drum (copiile mai vechi nu le au: rămân cele de acum)
+            if (p.has("travelMode")) TravelPrefs.setMode(context, TravelEstimator.Mode.fromName(p.optString("travelMode")))
+            if (p.has("homePlaceId")) TravelPrefs.setHomePlaceId(context, p.optLong("homePlaceId", -1L).takeIf { it > 0 })
+            if (p.has("prepMinutes")) TravelPrefs.setPrepMinutes(context, p.optInt("prepMinutes", TravelPrefs.DEFAULT_PREP_MINUTES))
         }
 
         // alarmele și reminderul de seară trebuie programate din nou pentru datele restaurate
