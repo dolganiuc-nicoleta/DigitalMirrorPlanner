@@ -84,6 +84,7 @@ internal fun TimelineWakeItem(sleep: DayViewModel.SleepUi) {
         SleepPlanner.Reason.EARLY_START ->
             "mai devreme decât de obicei, ca să ai timp de dimineață înainte de ${SleepPlanner.clock(sleep.firstStart ?: plan.wake)}"
         SleepPlanner.Reason.DEFAULT -> "propunere de pornire; o potrivesc după ce aflu cum dormi"
+        SleepPlanner.Reason.CHOSEN -> "ora aleasă de tine pentru ziua asta"
     }
     SleepRow(emoji = "☀️", time = SleepPlanner.clock(plan.wake), title = "Trezire", subtitle = why)
 }

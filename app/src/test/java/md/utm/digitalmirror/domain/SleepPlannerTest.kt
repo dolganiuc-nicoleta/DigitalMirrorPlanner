@@ -96,6 +96,16 @@ class SleepPlannerTest {
     }
 
     @Test
+    fun `ora aleasa pentru o zi are prioritate`() {
+        // vineri mă trezesc la 10:00, chiar dacă de obicei la 9:00
+        val p = SleepPlanner.plan(usual, firstStart = h(14), chosenWake = h(10))
+        assertEquals(h(10), p.wake)
+        assertEquals(Reason.CHOSEN, p.reason)
+        // iar lucrurile flexibile încep după ora aleasă
+        assertEquals(h(10, 20), SleepPlanner.activeWindow(usual, chosenWake = h(10)).first)
+    }
+
+    @Test
     fun `noptile ciudate nu strica media`() {
         val nights = usual + Night(60, h(4), h(5)) + Night(900, h(20), h(11))
         val p = SleepPlanner.plan(nights, firstStart = null)

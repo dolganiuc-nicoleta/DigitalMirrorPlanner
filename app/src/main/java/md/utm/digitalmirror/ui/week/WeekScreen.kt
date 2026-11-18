@@ -54,6 +54,7 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
     var deadlineFor by remember { mutableStateOf<WeekTask?>(null) }
     var deleting by remember { mutableStateOf<WeekTask?>(null) }
     var selectedDay by rememberSaveable { mutableIntStateOf(-1) }      // -1 = toate zilele
+    var editingDay by remember { mutableStateOf<WeekViewModel.SkeletonDay?>(null) }
 
     Scaffold(
         topBar = {
@@ -127,6 +128,13 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // --- scheletul săptămânii: ce e fix, trezirea, mesele; excepțiile cu un tap ---
+            if (state.skeleton.isNotEmpty()) {
+                item {
+                    SkeletonCard(days = state.skeleton, onEdit = { editingDay = it })
                 }
             }
 
@@ -336,6 +344,150 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
             text = { Text("Sesiunile neîncepute din plan se șterg. Cele deja făcute rămân în istoric.") },
             confirmButton = { TextButton(onClick = { vm.deleteTask(task); deleting = null }) { Text("Șterge") } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Anulează") } }
+        )
+    }
+
+    // excepțiile unei zile; rândul se ia mereu proaspăt din stare, ca schimbările să se vadă imediat
+    editingDay?.let { picked ->
+        val day = state.skeleton.firstOrNull { it.date == picked.date } ?: picked
+        DayExceptionsDialog(
+            day = day,
+            onWake = { vm.setWake(day.date, it) },
+            onToggleMeal = { vm.toggleMeal(day.date, it) },
+            onReset = { vm.resetDay(day.date) },
+            onDismiss = { editingDay = null }
+        )
+    }
+}
+
+/**
+ * Scheletul săptămânii: un rând pe zi, cu trezirea, ce e fix și mesele.
+ * Tu corectezi doar excepțiile (apasă pe o zi); restul îl construiește aplicația.
+ */
+@Composable
+private fun SkeletonCard(days: List<WeekViewModel.SkeletonDay>, onEdit: (WeekViewModel.SkeletonDay) -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Scheletul săptămânii", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 16.dp))
+            Text(
+                "Ce e fix, când te trezești și mesele. Apasă o zi ca să schimbi ceva doar pentru ea.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(4.dp))
+            days.forEach { d ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onEdit(d) }
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        dayName(d.date).take(2).replaceFirstChar { it.uppercase() } + " ${d.date.dayOfMonth}",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.width(52.dp)
+                    )
+                    Column(Modifier.weight(1f)) {
+                        val chosen = if (d.wakeReason == md.utm.digitalmirror.domain.SleepPlanner.Reason.CHOSEN) " ✎" else ""
+                        val fixed = when {
+                            d.dayOff -> "zi liberă"
+                            d.fixedFrom != null && d.fixedTo != null -> "📅 ${clock(d.fixedFrom)}–${clock(d.fixedTo.coerceAtMost(24 * 60 - 1))}"
+                            else -> "nimic fix"
+                        }
+                        Text(
+                            "☀️ ${clock(d.wake)}$chosen · $fixed",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        val skipped = d.override?.skipped.orEmpty()
+                        val meals = md.utm.digitalmirror.domain.MealPlanner.Kind.entries.mapNotNull { k ->
+                            when {
+                                k.name in skipped -> null
+                                k in d.meals -> k.emoji
+                                else -> null
+                            }
+                        }.joinToString(" ")
+                        val warn = d.missingMeals.joinToString(", ") { "n-ai loc de ${it.label.lowercase()}" }
+                        Text(
+                            listOf(meals.ifBlank { "fără mese planificate" }, warn).filter { it.isNotBlank() }.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (warn.isNotBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (d.override != null) {
+                        Text("excepție", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Excepțiile unei zile: altă oră de trezire, mese sărite, sau înapoi la obișnuit. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun DayExceptionsDialog(
+    day: WeekViewModel.SkeletonDay,
+    onWake: (Int?) -> Unit,
+    onToggleMeal: (md.utm.digitalmirror.domain.MealPlanner.Kind) -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pickingWake by remember { mutableStateOf(false) }
+    val chosen = day.override?.wakeMinute
+    val skipped = day.override?.skipped.orEmpty()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${dayName(day.date).replaceFirstChar { it.uppercase() }}, ${shortDate(day.date)}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Trezire", style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { pickingWake = true }) { Text("☀️ ${clock(day.wake)}") }
+                    if (chosen != null) TextButton(onClick = { onWake(null) }) { Text("ora obișnuită") }
+                }
+                Text(
+                    if (chosen != null) "Ai ales ora pentru ziua asta. Ora de culcare din seara dinainte se potrivește după ea."
+                    else "Ora obișnuită (sau mai devreme, dacă ziua începe devreme).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text("Mese", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    md.utm.digitalmirror.domain.MealPlanner.Kind.entries.forEach { k ->
+                        FilterChip(
+                            selected = k.name !in skipped,
+                            onClick = { onToggleMeal(k) },
+                            label = { Text("${k.emoji} ${k.label}") }
+                        )
+                    }
+                }
+                Text(
+                    "Debifează o masă ca s-o sari doar în ziua asta.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Gata") } },
+        dismissButton = {
+            if (day.override != null) TextButton(onClick = { onReset(); onDismiss() }) { Text("Ca de obicei") }
+        }
+    )
+
+    if (pickingWake) {
+        val state = rememberTimePickerState(initialHour = day.wake / 60, initialMinute = day.wake % 60, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { pickingWake = false },
+            title = { Text("Te trezești la") },
+            text = { TimePicker(state = state) },
+            confirmButton = {
+                TextButton(onClick = { onWake(state.hour * 60 + state.minute); pickingWake = false }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { pickingWake = false }) { Text("Anulează") } }
         )
     }
 }

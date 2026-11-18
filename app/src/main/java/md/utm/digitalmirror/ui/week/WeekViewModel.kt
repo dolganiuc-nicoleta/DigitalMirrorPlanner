@@ -18,6 +18,8 @@ import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.data.entity.DayOverride
+import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.data.entity.WeekTask
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
@@ -62,6 +64,22 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         val risky: Boolean
     )
 
+    /**
+     * Un rând din scheletul săptămânii: trezirea, ce e fix, mesele și excepțiile alese pentru ziua asta.
+     * Sesiunile propuse din plan nu intră aici: scheletul e ce e fix, iar sarcinile se potrivesc în el.
+     */
+    data class SkeletonDay(
+        val date: LocalDate,
+        val wake: Int,
+        val wakeReason: SleepPlanner.Reason,
+        val fixedFrom: Int?,                       // primul lucru fix (curs, eveniment, bloc)
+        val fixedTo: Int?,                         // ultimul lucru fix
+        val meals: List<MealPlanner.Kind>,         // mesele care au loc în ziua asta
+        val missingMeals: List<MealPlanner.Kind>,  // mesele pornite, dar fără loc
+        val override: DayOverride?,
+        val dayOff: Boolean
+    )
+
     data class UiState(
         val weekStart: LocalDate = PeriodReport.weekStart(LocalDate.now()),
         val offset: Int = 0,
@@ -77,7 +95,8 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         val scenarioBlocks: List<WeekScenario.Block> = emptyList(),
         val scenarioIgnored: List<String> = emptyList(),
         val categories: List<Category> = emptyList(),
-        val analysisOn: Boolean = true
+        val analysisOn: Boolean = true,
+        val skeleton: List<SkeletonDay> = emptyList()
     )
 
     private val db = AppDatabase.get(app)
@@ -124,8 +143,14 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val overrideDao = db.dayOverrideDao()
+
     val state: StateFlow<UiState> =
-        combine(combine(offset, scope, scenarioText) { o, s, t -> Triple(o, s, t) }, data) { (o, s, t), d ->
+        combine(
+            combine(offset, scope, scenarioText) { o, s, t -> Triple(o, s, t) },
+            data,
+            overrideDao.observeAll()          // o excepție nouă schimbă scheletul și locul sesiunilor
+        ) { (o, s, t), d, _ ->
             Triple(o, s, t) to d
         }.mapLatest { (controls, d) -> compute(controls.first, controls.second, controls.third, d) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState())
@@ -162,10 +187,9 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in d.daysOff } else emptyList()
         val earliestToday = LocalTime.now().let { maxOf(8 * 60, it.hour * 60 + it.minute + 10) }
         val calendarPlaces = DayBusy.calendarPlaces(app)
-        // sesiunile stau între trezirea ta obișnuită (plus dimineața) și ora ta de culcare
-        val (dayStart, dayEnd) = SleepPlanner.activeWindow(DayBusy.recentNights(app, today))
-
         val inputs = planDays.map { date ->
+            // sesiunile stau între trezire (cea obișnuită sau cea aleasă pentru ziua asta) și ora de culcare
+            val (dayStart, dayEnd) = DayBusy.window(app, date)
             val busy = mutableListOf<SlotRecommender.Busy>()
             val activitiesToday = fixed.filter { it.date == date.toString() }
             // cu locul fiecărui lucru, ca sesiunile să lase timp de drum
@@ -174,7 +198,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
             busy += DayBusy.blocks(date, d.rules, d.daysOff)
             busy += scenario.blocks.filter { it.date == date }.map { SlotRecommender.Busy(it.fromMinute, it.toMinute) }
             // mesele din ferestrele tale: sesiunile nu se pun peste ele
-            busy += travelMatrix.skeleton(busy.toList()).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
+            busy += travelMatrix.skeleton(busy.toList(), date).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
             if (date.toString() in d.daysOff) busy += SlotRecommender.Busy(0, 24 * 60)
 
             val planned = activitiesToday.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
@@ -242,7 +266,29 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         val proposed = plan.sessions.map { Triple(it.taskId, it.date.toString() to it.startMinute, it.minutes) }.toSet()
         val current = movableList.map { Triple(it.weekTaskId!!, it.date to (it.plannedStartMinute ?: -1), it.userEstimatedMinutes ?: 0) }.toSet()
 
+        // scheletul: din azi (sau de luni, săptămâna viitoare) până duminică
+        val skeleton = week.filter { !it.isBefore(today) }.map { date ->
+            val fixedToday = fixed.filter { it.date == date.toString() }
+            val busy = DayBusy.activities(fixedToday) +
+                    DayBusy.calendar(app, date, calendarPlaces) +
+                    DayBusy.blocks(date, d.rules, d.daysOff)
+            val sk = travelMatrix.skeleton(busy, date)
+            val sleep = DayBusy.sleepPlan(app, date, DayBusy.firstStart(busy, sk))
+            SkeletonDay(
+                date = date,
+                wake = sleep.wake,
+                wakeReason = sleep.reason,
+                fixedFrom = busy.minOfOrNull { it.start },
+                fixedTo = busy.maxOfOrNull { it.end },
+                meals = sk.meals.slots.map { it.kind },
+                missingMeals = sk.meals.missing.map { it.kind },
+                override = DayBusy.override(app, date),
+                dayOff = date.toString() in d.daysOff
+            )
+        }
+
         return UiState(
+            skeleton = skeleton,
             weekStart = start,
             offset = off,
             scope = scopeNow,
@@ -273,6 +319,27 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     // ---- ce face utilizatorul ----
+
+    // ---- excepțiile din schelet ----
+
+    /** „Vineri mă trezesc la 10:00”; null = ora obișnuită. */
+    fun setWake(date: LocalDate, minute: Int?) = updateOverride(date) { it.copy(wakeMinute = minute) }
+
+    /** „Joi sar prânzul” (sau îl repune). */
+    fun toggleMeal(date: LocalDate, kind: MealPlanner.Kind) = updateOverride(date) { o ->
+        val skipped = o.skipped.toMutableSet()
+        if (!skipped.add(kind.name)) skipped.remove(kind.name)
+        o.copy(skippedMeals = skipped.sorted().joinToString(","))
+    }
+
+    /** Ziua revine la scheletul obișnuit. */
+    fun resetDay(date: LocalDate) = viewModelScope.launch { overrideDao.delete(date.toString()) }
+
+    private fun updateOverride(date: LocalDate, change: (DayOverride) -> DayOverride) = viewModelScope.launch {
+        val current = overrideDao.get(date.toString()) ?: DayOverride(date.toString())
+        val updated = change(current)
+        if (updated.isEmpty) overrideDao.delete(date.toString()) else overrideDao.upsert(updated)
+    }
 
     fun setOffset(value: Int) { offset.value = value.coerceIn(0, 1) }
     fun setScope(value: Scope) { scope.value = value }

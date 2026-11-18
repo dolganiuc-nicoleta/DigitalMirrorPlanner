@@ -28,7 +28,8 @@ object SleepPlanner {
     enum class Reason {
         USUAL,          // ora ta obișnuită de trezire încape
         EARLY_START,    // ziua începe devreme: te trezești mai devreme decât de obicei
-        DEFAULT         // nu avem destule nopți: valori implicite
+        DEFAULT,        // nu avem destule nopți: valori implicite
+        CHOSEN          // ai ales tu ora pentru ziua asta (excepție în scheletul săptămânii)
     }
 
     data class Plan(
@@ -47,8 +48,9 @@ object SleepPlanner {
      * @param nights nopțile recente
      * @param firstStart primul lucru din zi (sau începutul pregătirii de plecare), în minute; null = zi liberă
      * @param breakfastMinutes micul dejun, dacă e pornit; se adaugă la dimineață
+     * @param chosenWake ora de trezire aleasă de tine pentru ziua asta; are prioritate
      */
-    fun plan(nights: List<Night>, firstStart: Int?, breakfastMinutes: Int = 0): Plan {
+    fun plan(nights: List<Night>, firstStart: Int?, breakfastMinutes: Int = 0, chosenWake: Int? = null): Plan {
         val good = nights.filter(::plausible)
         val sleeps = good.mapNotNull { it.sleepMinutes }
         val wakes = good.mapNotNull { it.wake }
@@ -58,6 +60,8 @@ object SleepPlanner {
         val sleep = if (enough) median(sleeps) else DEFAULT_SLEEP_MINUTES
         val usualWake = if (wakes.size >= MIN_NIGHTS) median(wakes) else null
         val usualBed = if (beds.size >= MIN_NIGHTS) median(beds) else null
+
+        if (chosenWake != null) return Plan(chosenWake, sleep, Reason.CHOSEN, sleeps.size, usualWake, usualBed)
 
         val preferred = usualWake ?: DEFAULT_WAKE
         val latest = firstStart?.let { it - MORNING_MINUTES - breakfastMinutes }
@@ -75,11 +79,11 @@ object SleepPlanner {
      * doar lucrurile fixe (cursuri, programări) pot muta trezirea.
      * Fără destule nopți: 8:20–23:00.
      */
-    fun activeWindow(nights: List<Night>): Pair<Int, Int> {
+    fun activeWindow(nights: List<Night>, chosenWake: Int? = null): Pair<Int, Int> {
         val good = nights.filter(::plausible)
         val wakes = good.mapNotNull { it.wake }
         val beds = good.mapNotNull { it.bedtime }.map { if (it < 12 * 60) it + DAY else it }
-        val wake = if (wakes.size >= MIN_NIGHTS) median(wakes) else DEFAULT_WAKE
+        val wake = chosenWake ?: if (wakes.size >= MIN_NIGHTS) median(wakes) else DEFAULT_WAKE
         val bed = if (beds.size >= MIN_NIGHTS) median(beds) else DEFAULT_BEDTIME
         val start = wake + MORNING_MINUTES
         val end = bed.coerceAtMost(DAY)

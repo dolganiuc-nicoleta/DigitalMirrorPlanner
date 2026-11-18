@@ -193,7 +193,7 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         // 2. ce e deja ocupat în ziua aleasă
         val busy = busyFor(date)
         // activitățile stau între trezirea ta obișnuită (plus dimineața) și ora ta de culcare
-        val (dayStart, dayEnd) = SleepPlanner.activeWindow(DayBusy.recentNights(app, date))
+        val (dayStart, dayEnd) = DayBusy.window(app, date)
         val earliest = if (date == today) {
             val now = LocalTime.now()
             maxOf(dayStart, now.hour * 60 + now.minute + 10)
@@ -262,7 +262,7 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         val blocks = DayBusy.blocks(date, DayBusy.rules(app), daysOff)
         val busy = activities + calendar + blocks
         // mesele din ferestrele tale: activitățile noi nu se pun peste ele
-        val meals = travelMatrix.skeleton(busy).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
+        val meals = travelMatrix.skeleton(busy, date).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
         return busy + meals
     }
 

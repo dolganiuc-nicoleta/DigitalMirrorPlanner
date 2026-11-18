@@ -69,6 +69,9 @@ object Routes {
     fun prepDetail(id: Long) = "prep_detail/$id"
 }
 
+/** Cheia prin care un ecran cere ecranului zilei să arate o anumită dată. */
+private const val OPEN_DATE = "open_date"
+
 // tab-urile din bara de jos
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
@@ -137,7 +140,7 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
         ) {
-            composable(Routes.DAY) {
+            composable(Routes.DAY) { entry ->
                 // deschis din notificare → mergem direct la închiderea zilei de azi
                 LaunchedEffect(Unit) {
                     if (openClosingToday && !notificationHandled) {
@@ -145,7 +148,11 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                         navController.navigate(Routes.closing(LocalDate.now().toString()))
                     }
                 }
+                // ziua cerută de alt ecran (de ex. „Deschide ziua de mâine” din închiderea zilei)
+                val requested by entry.savedStateHandle.getStateFlow<String?>(OPEN_DATE, null).collectAsState()
                 DayScreen(
+                    requestedDate = requested,
+                    onRequestedDateShown = { entry.savedStateHandle[OPEN_DATE] = null },
                     onCloseDay = { date -> navController.navigate(Routes.closing(date)) },
                     onOpenActivity = { id -> navController.navigate(Routes.activity(id)) },
                     onPlan = { navController.navigate(Routes.PLAN) },
@@ -265,7 +272,14 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 arguments = listOf(navArgument("date") { type = NavType.StringType })
             ) { entry ->
                 val date = entry.arguments?.getString("date") ?: LocalDate.now().toString()
-                ClosingScreen(date = date, onBack = { navController.popBackStack() })
+                ClosingScreen(
+                    date = date,
+                    onBack = { navController.popBackStack() },
+                    onOpenDay = { day ->
+                        navController.previousBackStackEntry?.savedStateHandle?.set(OPEN_DATE, day)
+                        navController.popBackStack()
+                    }
+                )
             }
 
             composable(

@@ -6,12 +6,26 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
+import md.utm.digitalmirror.data.entity.CalendarPlace
 import md.utm.digitalmirror.data.entity.DailyActivity
 import md.utm.digitalmirror.data.entity.Reflection
+import md.utm.digitalmirror.data.prefs.AnalysisPrefs
+import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.data.travel.DayBusy
+import md.utm.digitalmirror.data.travel.TravelMatrix
+import md.utm.digitalmirror.domain.Availability
+import md.utm.digitalmirror.domain.DayLoad
+import md.utm.digitalmirror.domain.EveningReview
+import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.domain.PresenceRules
+import md.utm.digitalmirror.domain.SleepPlanner
+import md.utm.digitalmirror.domain.SlotRecommender
+import md.utm.digitalmirror.domain.TimelineTravel
+import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.reminder.ActivityReminders
 import java.time.LocalDate
 import java.time.ZoneId
@@ -151,6 +165,19 @@ class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * „Închide ziua”: întâi confirmă activitățile (cele amânate trec pe mâine), apoi salvează reflecția.
+     * În ordinea asta, ca rezumatul de mâine să le vadă deja mutate.
+     */
+    fun closeDay(
+        mood: Int, workedOn: String, blockers: String, note: String,
+        bedtime: Int?, wake: Int?, sleepEdited: Boolean,
+        onDone: () -> Unit
+    ) = viewModelScope.launch {
+        confirmAll().join()
+        save(mood, workedOn, blockers, note, bedtime, wake, sleepEdited, onDone).join()
+    }
+
+    /**
      * Salvează reflecția și, dacă utilizatorul a completat sau a modificat somnul, și somnul.
      * bedtime / wake sunt minute de la miezul nopții; sleepEdited = true doar dacă le-a atins utilizatorul.
      */
@@ -188,6 +215,99 @@ class ClosingViewModel(private val app: Application) : AndroidViewModel(app) {
             )
         }
         onDone()
+    }
+
+    // ---------- pasul 2: ziua de mâine ----------
+
+    /** Rezumatul zilei de mâine și întrebările (doar la excepții). */
+    data class Tomorrow(
+        val date: LocalDate,
+        val sleep: SleepPlanner.Plan,              // trezirea de mâine
+        val first: EveningReview.Item?,            // primul lucru de mâine
+        val firstLeg: TimelineTravel.Leg?,         // prima plecare de acasă (pregătire, drum)
+        val meals: List<MealPlanner.Slot>,
+        val issues: List<EveningReview.Issue>
+    ) {
+        /** Ora de culcare din seara asta (peste 24:00 dacă e după miezul nopții). */
+        val bedtimeTonight: Int get() = sleep.bedtimeBefore
+    }
+
+    private val _tomorrow = MutableStateFlow<Tomorrow?>(null)
+    val tomorrow: StateFlow<Tomorrow?> = _tomorrow
+
+    val places: StateFlow<List<md.utm.digitalmirror.data.entity.Place>> =
+        db.placeDao().observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val matrix by lazy { TravelMatrix(app) }
+
+    fun loadTomorrow() = viewModelScope.launch {
+        val today = LocalDate.parse(_date.value ?: return@launch)
+        val next = today.plusDays(1)
+
+        val links = DayBusy.calendarPlaces(app)
+        val activities = planner.observeActivitiesForDate(next.toString()).first()
+            .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+        val events = CalendarReader.eventsFor(app, next).filter { it.busy && !it.allDay }
+        val daysOff = db.availabilityDao().observeDaysOff().first().map { it.date }.toSet()
+        val blocks = Availability.blocksFor(next, DayBusy.rules(app), daysOff)
+
+        // ce e mâine, cu oră; flexibil = pus de aplicație dintr-un plan (se poate muta)
+        val items = activities.mapNotNull { a ->
+            a.plannedStartMinute?.let {
+                EveningReview.Item(
+                    it, it + (a.userEstimatedMinutes ?: a.estimatedMinutes ?: 30), a.title,
+                    flexible = a.weekTaskId != null || a.prepStepId != null,
+                    activityId = a.id, placeId = a.placeId
+                )
+            }
+        } + events.map {
+            EveningReview.Item(it.startMinute, it.endMinute, it.title, flexible = false, placeId = links[TitleKey.of(it.title)])
+        } + blocks.map { EveningReview.Item(it.start, it.end, it.title, flexible = false, placeId = it.placeId) }
+
+        val busy = DayBusy.forDate(app, next)
+        val skeleton = matrix.skeleton(busy, next)
+        val sleep = DayBusy.sleepPlan(app, next, DayBusy.firstStart(busy, skeleton))
+
+        // cât e planificat mâine față de cât reușești de obicei
+        val load = if (AnalysisPrefs.isEnabled(app) && next.toString() !in daysOff) {
+            val planned = activities.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
+            DayLoad.compute(planned, planner.dailyTotals(today.toString()), next)
+        } else null
+
+        val hasPlaces = db.placeDao().getAll().isNotEmpty()
+        val issues = EveningReview.issues(
+            items = items,
+            sleep = sleep,
+            window = DayBusy.window(app, next),
+            mealBusy = skeleton.meals.slots.map { SlotRecommender.Busy(it.start, it.end) },
+            missingMeals = skeleton.meals.missing,
+            eventsWithoutPlace = if (hasPlaces) events.filter { links[TitleKey.of(it.title)] == null }.map { it.title } else emptyList(),
+            load = load
+        )
+
+        _tomorrow.value = Tomorrow(
+            date = next,
+            sleep = sleep,
+            first = items.minByOrNull { it.start },
+            firstLeg = skeleton.legs.firstOrNull { it.prepMinutes > 0 || it.fromPlaceId == matrix.homePlaceId },
+            meals = skeleton.meals.slots,
+            issues = issues
+        )
+    }
+
+    /** Mută o activitate de mâine la altă oră (răspunsul la „O mut mai târziu?”). */
+    fun moveTomorrow(activityId: Long, start: Int) = viewModelScope.launch {
+        val a = planner.getActivity(activityId) ?: return@launch
+        val moved = a.copy(plannedStartMinute = start)
+        planner.updateActivity(moved)
+        ActivityReminders.onActivityPlanned(app, moved)
+        loadTomorrow()
+    }
+
+    /** Locul unui eveniment din calendar (răspunsul la „Unde e C.PAD?”), pentru toate cu același nume. */
+    fun setEventPlace(title: String, placeId: Long) = viewModelScope.launch {
+        db.calendarPlaceDao().upsert(CalendarPlace(TitleKey.of(title), placeId, CalendarPlace.SOURCE_USER))
+        loadTomorrow()
     }
 
     companion object {

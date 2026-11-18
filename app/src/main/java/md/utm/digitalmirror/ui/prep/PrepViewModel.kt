@@ -183,10 +183,9 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         val daysOff = availability.observeDaysOff().first().map { it.date }.toSet()
         val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in daysOff } else emptyList()
         val calendarPlaces = DayBusy.calendarPlaces(app)
-        // sesiunile stau între trezirea ta obișnuită (plus dimineața) și ora ta de culcare
-        val (dayStart, dayEnd) = SleepPlanner.activeWindow(DayBusy.recentNights(app, today))
-
         val inputs = days.map { date ->
+            // sesiunile stau între trezire (cea obișnuită sau cea aleasă pentru ziua asta) și ora de culcare
+            val (dayStart, dayEnd) = DayBusy.window(app, date)
             val fixed = repo.observeActivitiesForDate(date.toString()).first()
                 .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
             val busy = mutableListOf<SlotRecommender.Busy>()
@@ -194,7 +193,7 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
             busy += DayBusy.calendar(app, date, calendarPlaces)
             busy += DayBusy.blocks(date, rules, daysOff)
             // mesele din ferestrele tale: sesiunile nu se pun peste ele
-            busy += travelMatrix.skeleton(busy.toList()).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
+            busy += travelMatrix.skeleton(busy.toList(), date).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
             if (date.toString() in daysOff) busy += SlotRecommender.Busy(0, 24 * 60)
             val planned = fixed.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
             val typical = if (analysisOn) DayLoad.compute(0, totals, date).typicalMinutes else null

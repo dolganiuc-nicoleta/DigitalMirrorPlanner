@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.first
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
+import md.utm.digitalmirror.data.entity.DayOverride
+import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.domain.Availability
@@ -45,11 +47,11 @@ class TravelMatrix(private val context: Context) {
      * Scheletul zilei (drumuri cu pregătire și mese) pentru ce e deja ocupat.
      * @param busy cu locul fiecărui lucru, ca în [DayBusy]
      */
-    suspend fun skeleton(busy: List<Busy>): DaySkeleton.Result {
+    suspend fun skeleton(busy: List<Busy>, date: LocalDate): DaySkeleton.Result {
         val home = homePlaceId
         val stops = busy.mapNotNull { b -> b.placeId?.let { TimelineTravel.Stop(b.start, b.end, it) } }
         val travel = forPairs(TimelineTravel.pairsNeeded(stops, home))
-        return DaySkeleton.build(busy, home, travel, TravelPrefs.prepMinutes(context), MealPrefs.windows(context))
+        return DaySkeleton.build(busy, home, travel, TravelPrefs.prepMinutes(context), DayBusy.meals(context, date))
     }
 
     /**
@@ -105,6 +107,28 @@ object DayBusy {
         AppDatabase.get(context).dailyActivityDao()
             .between(date.minusDays(28).toString(), date.minusDays(1).toString())
             .map { SleepPlanner.Night(it.sleepMinutes, it.bedtimeMinute, it.wakeMinute) }
+
+    // ---- regulile unei zile: cele obișnuite, plus excepțiile ei din scheletul săptămânii ----
+
+    suspend fun override(context: Context, date: LocalDate): DayOverride? =
+        AppDatabase.get(context).dayOverrideDao().get(date.toString())
+
+    /** Ferestrele meselor pentru ziua dată; cele sărite în ziua asta sunt oprite. */
+    suspend fun meals(context: Context, date: LocalDate): List<MealPlanner.Window> {
+        val skipped = override(context, date)?.skipped.orEmpty()
+        return MealPrefs.windows(context).map { if (it.kind.name in skipped) it.copy(enabled = false) else it }
+    }
+
+    /** Intervalul pentru lucruri flexibile în ziua dată (după trezire și dimineață, până la culcare). */
+    suspend fun window(context: Context, date: LocalDate): Pair<Int, Int> =
+        SleepPlanner.activeWindow(recentNights(context, date), override(context, date)?.wakeMinute)
+
+    /** Trezirea propusă pentru ziua dată, cu ora aleasă de tine (dacă există) și micul dejun al zilei. */
+    suspend fun sleepPlan(context: Context, date: LocalDate, firstStart: Int?): SleepPlanner.Plan {
+        val breakfast = meals(context, date)
+            .firstOrNull { it.kind == MealPlanner.Kind.BREAKFAST && it.enabled }?.minutes ?: 0
+        return SleepPlanner.plan(recentNights(context, date), firstStart, breakfast, override(context, date)?.wakeMinute)
+    }
 
     /** Blocurile fixe din Setări, cu locul lor. */
     suspend fun rules(context: Context): List<Availability.Rule> =

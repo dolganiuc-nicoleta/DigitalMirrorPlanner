@@ -283,8 +283,11 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
      * din activitățile, evenimentele din calendar și blocurile fixe. Doar pentru azi și zilele viitoare.
      * `by lazy`, pentru că folosește fluxuri declarate mai jos în clasă (calendarul).
      */
+    // excepțiile din scheletul săptămânii (altă oră de trezire, mese sărite): la schimbare, ziua se recalculează
+    private val overrides = AppDatabase.get(app).dayOverrideDao().observeAll()
+
     val skeleton: StateFlow<DaySkeleton.Result?> by lazy {
-        combine(activities, calendarEvents, fixedBlocks, calendarPlaces, _travelMode) { list, events, blocks, links, _ ->
+        combine(activities, calendarEvents, fixedBlocks, calendarPlaces, combine(_travelMode, overrides) { m, _ -> m }) { list, events, blocks, links, _ ->
             val active = list.filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
             val busy = active.mapNotNull { a ->
                 val start = a.plannedStartMinute ?: return@mapNotNull null
@@ -304,7 +307,7 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             val stops = busy.mapNotNull { b -> b.placeId?.let { TimelineTravel.Stop(b.start, b.end, it) } }
             val travel = travelBetween(TimelineTravel.pairsNeeded(stops, home))
             // azi: mesele cu fereastra deja trecută nu mai contează, iar celelalte se pun de acum încolo
-            var windows = MealPrefs.windows(app)
+            var windows = DayBusy.meals(app, LocalDate.parse(date))
             var mealBusy = busy
             if (LocalDate.parse(date) == LocalDate.now()) {
                 val now = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
@@ -334,9 +337,11 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
     private val skeletonMatrix by lazy { TravelMatrix(app) }
 
     /** Intervalul pentru lucruri flexibile: după trezirea obișnuită și dimineață, până la ora de culcare. */
-    val dayWindow: StateFlow<Pair<Int, Int>> =
-        _date.mapLatest { SleepPlanner.activeWindow(DayBusy.recentNights(app, LocalDate.parse(it))) }
+    val dayWindow: StateFlow<Pair<Int, Int>> by lazy {
+        combine(_date, overrides) { d, _ -> d }
+            .mapLatest { DayBusy.window(app, LocalDate.parse(it)) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SleepPlanner.activeWindow(emptyList()))
+    }
 
     val sleep: StateFlow<SleepUi?> by lazy {
         combine(skeleton, activities, calendarEvents, fixedBlocks, calendarPlaces) { sk, list, events, blocks, links ->
@@ -348,17 +353,14 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         }.mapLatest { (sk, busy, date) ->
             val day = LocalDate.parse(date)
             if (sk == null || day.isBefore(LocalDate.now())) return@mapLatest null
-            val breakfast = MealPrefs.windows(app)
-                .firstOrNull { it.kind == MealPlanner.Kind.BREAKFAST && it.enabled }?.minutes ?: 0
-
             val first = DayBusy.firstStart(busy, sk)
-            val today = SleepPlanner.plan(DayBusy.recentNights(app, day), first, breakfast)
+            val today = DayBusy.sleepPlan(app, day, first)
 
             // ziua de mâine, ca să știm cât de devreme te trezești și deci când te culci în seara asta
             val next = day.plusDays(1)
             val nextBusy = DayBusy.forDate(app, next)
-            val nextFirst = DayBusy.firstStart(nextBusy, skeletonMatrix.skeleton(nextBusy))
-            val tomorrow = SleepPlanner.plan(DayBusy.recentNights(app, next), nextFirst, breakfast)
+            val nextFirst = DayBusy.firstStart(nextBusy, skeletonMatrix.skeleton(nextBusy, next))
+            val tomorrow = DayBusy.sleepPlan(app, next, nextFirst)
 
             SleepUi(today, first, tomorrow, nextFirst)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)

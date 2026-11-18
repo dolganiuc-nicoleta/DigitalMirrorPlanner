@@ -52,6 +52,8 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayScreen(
+    requestedDate: String? = null,
+    onRequestedDateShown: () -> Unit = {},
     onCloseDay: (String) -> Unit = {},
     onOpenActivity: (Long) -> Unit = {},
     onPlan: () -> Unit = {},
@@ -59,6 +61,14 @@ fun DayScreen(
     onPrep: () -> Unit = {},
     vm: DayViewModel = viewModel()
 ) {
+    // altă pagină a cerut o anumită zi (de ex. mâine, din închiderea zilei)
+    LaunchedEffect(requestedDate) {
+        requestedDate?.let {
+            vm.changeDate(it)
+            onRequestedDateShown()
+        }
+    }
+
     val date by vm.date.collectAsState()
     val activities by vm.activities.collectAsState()
     val categories by vm.categories.collectAsState()
