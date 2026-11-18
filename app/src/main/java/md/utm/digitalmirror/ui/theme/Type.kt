@@ -3,7 +3,9 @@ package md.utm.digitalmirror.ui.theme
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import md.utm.digitalmirror.R
@@ -14,6 +16,23 @@ val Jakarta = FontFamily(
     Font(R.font.plus_jakarta_sans_medium, FontWeight.Medium),
     Font(R.font.plus_jakarta_sans_semibold, FontWeight.SemiBold),
     Font(R.font.plus_jakarta_sans_bold, FontWeight.Bold)
+)
+
+/**
+ * Fraunces, serif expresiv pentru titluri și cifrele mari (arcul zilei).
+ * E un font variabil: alegem grosimea și mărimea optică (opsz) pentru fiecare variantă.
+ * Licența (SIL OFL 1.1) e în licenses/Fraunces-OFL.txt.
+ */
+@OptIn(ExperimentalTextApi::class)
+val Fraunces = FontFamily(
+    Font(
+        R.font.fraunces, FontWeight.Normal,
+        variationSettings = FontVariation.Settings(FontVariation.weight(400), FontVariation.Setting("opsz", 144f))
+    ),
+    Font(
+        R.font.fraunces, FontWeight.SemiBold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(600), FontVariation.Setting("opsz", 72f))
+    )
 )
 
 private val base = Typography()

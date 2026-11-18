@@ -34,6 +34,8 @@ import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.MealPlanner
+import md.utm.digitalmirror.domain.DayArc
+import md.utm.digitalmirror.domain.TravelPlanner
 import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.domain.TimelineGaps
 import md.utm.digitalmirror.domain.TravelGaps
@@ -99,6 +101,33 @@ fun DayScreen(
     val dayTags = activities.flatMap { Tags.decode(it.tags) }.distinct().sorted()
     var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
     val activeTag = tagFilter?.takeIf { it in dayTags }
+
+    // arcul zilei: de la trezire la culcare, cu soarele „acum” (doar azi și zilele viitoare)
+    val nowMinute = rememberNowMinute()
+    val isTodayShown = date == LocalDate.now().toString()
+    val dayArc = sleep?.takeIf { activeTag == null }?.let { s ->
+        val items = activities
+            .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+            .filter { TravelPlanner.TRAVEL_TAG !in Tags.decode(it.tags) }
+            .mapNotNull { a ->
+                a.plannedStartMinute?.let { start ->
+                    DayArc.Item(
+                        start, start + (a.userEstimatedMinutes ?: a.estimatedMinutes ?: 30), a.title,
+                        if (a.state == "DONE" || a.state == "PARTIAL") DayArc.Kind.DONE else DayArc.Kind.ACTIVITY
+                    )
+                }
+            } +
+                calendarEvents.filter { it.busy && !it.allDay }
+                    .map { DayArc.Item(it.startMinute, it.endMinute, it.title, DayArc.Kind.EVENT) } +
+                fixedBlocks.map { DayArc.Item(it.start, it.end, it.title, DayArc.Kind.EVENT) } +
+                skeleton?.meals?.slots.orEmpty()
+                    .map { DayArc.Item(it.start, it.end, it.kind.label, DayArc.Kind.MEAL) }
+        val arcLegs = skeleton?.legs.orEmpty().map { leg ->
+            DayArc.Leg(leg.prepStart, leg.start, leg.end, places.find { it.id == leg.toPlaceId }?.name ?: "alt loc")
+        }
+        val result = DayArc.build(s.today.wake, s.bedtime, items, arcLegs, nowMinute.takeIf { isTodayShown })
+        Triple(result, s, if (isTodayShown) SkyTime.at(nowMinute) else SkyTime.MORNING)
+    }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var addAtMinute by remember { mutableStateOf<Int?>(null) }       // ora completată când apeși „+ Adaugă” într-un spațiu liber
@@ -218,6 +247,13 @@ fun DayScreen(
                 contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // arcul zilei, primul lucru pe care îl vezi
+                dayArc?.let { (arc, s, sky) ->
+                    item(key = "day-arc") {
+                        DayArcHero(arc = arc, wake = s.today.wake, bedtime = s.bedtime, sky = sky)
+                    }
+                }
+
                 // scurtături vizibile către planificare
                 item {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
