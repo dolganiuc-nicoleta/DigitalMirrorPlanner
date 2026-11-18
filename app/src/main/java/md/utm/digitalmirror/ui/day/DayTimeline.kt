@@ -15,8 +15,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.domain.TimelineGaps
+import md.utm.digitalmirror.domain.TimelineTravel
 import md.utm.digitalmirror.ui.components.formatDuration
 
 /** Un rând din linia de timp: o activitate cu oră sau un spațiu liber. */
@@ -32,6 +34,54 @@ sealed interface TimelineEntry {
     class Gap(val gap: TimelineGaps.Gap) : TimelineEntry {
         override val startMinute: Int get() = gap.start
         override val key: String get() = "g${gap.start}"
+    }
+
+    /** Un eveniment din calendarul telefonului (doar de citit; locul se poate alege). */
+    class Cal(val event: CalendarReader.Event) : TimelineEntry {
+        override val startMinute: Int get() = event.startMinute
+        override val key: String get() = "c${event.id}-${event.startMinute}"
+    }
+
+    class Travel(val leg: TimelineTravel.Leg, val toName: String) : TimelineEntry {
+        override val startMinute: Int get() = leg.start
+        override val key: String get() = "t${leg.start}-${leg.fromPlaceId}-${leg.toPlaceId}"
+    }
+}
+
+/** Un drum: „Drum spre Facultate · ~35 min (+10 marjă)”; cu avertisment când nu încape. */
+@Composable
+internal fun TimelineTravelItem(leg: TimelineTravel.Leg, toName: String, startLabel: String) {
+    TimelineItem(
+        time = startLabel,
+        marker = {
+            Text(
+                "🚶",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            val margin = (leg.end - leg.start - leg.travelMinutes).coerceAtLeast(0)
+            Text(
+                "Drum spre $toName",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "~${formatDuration(leg.travelMinutes)}" +
+                        (if (margin > 0) " + ${formatDuration(margin)} marjă" else ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (leg.tight) {
+                Text(
+                    "Nu încape: ar trebui să pleci mai devreme",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
     }
 }
 

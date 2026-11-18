@@ -70,6 +70,7 @@ fun DayScreen(
     val calendarEvents by vm.calendarEvents.collectAsState()
     val fixedBlocks by vm.fixedBlocks.collectAsState()
     val calendarPlaces by vm.calendarPlaces.collectAsState()
+    val timelineLegs by vm.timelineLegs.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
     val legs by vm.legs.collectAsState()
     val travelMode by vm.travelMode.collectAsState()
@@ -233,10 +234,12 @@ fun DayScreen(
                         )
                     }
                 }
-                if (calendarEvents.isNotEmpty()) {
+                // evenimentele cu oră stau pe linia de timp; aici rămân doar cele de toată ziua
+                val allDayEvents = calendarEvents.filter { it.allDay }
+                if (allDayEvents.isNotEmpty()) {
                     item {
                         CalendarCard(
-                            events = calendarEvents,
+                            events = allDayEvents,
                             places = places,
                             calendarPlaces = calendarPlaces,
                             onSetPlace = { title, placeId -> vm.setCalendarPlace(title, placeId) }
@@ -278,6 +281,8 @@ fun DayScreen(
                 val untimed = visible.filter { it.plannedStartMinute == null }
 
                 val today = LocalDate.now()
+                // drumurile zilei (fără filtru de etichetă; într-o zi liberă nu le arătăm)
+                val legs = if (activeTag == null && !isDayOff) timelineLegs else emptyList()
                 val gaps = if (activeTag == null && !isDayOff && date >= today.toString()) {
                     val now = java.time.LocalTime.now()
                     val from = if (date == today.toString()) maxOf(8 * 60, (now.hour * 60 + now.minute + 4) / 5 * 5) else 8 * 60
@@ -285,11 +290,24 @@ fun DayScreen(
                         .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
                         .mapNotNull { a -> a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) } } +
                             calendarEvents.filter { it.busy }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) } +
-                            fixedBlocks.map { SlotRecommender.Busy(it.busyStart, it.busyEnd) }
+                            // blocurile cu loc au drumul calculat (în legs); celelalte, drumul fix din Setări
+                            fixedBlocks.map {
+                                if (it.placeId != null) SlotRecommender.Busy(it.start, it.end)
+                                else SlotRecommender.Busy(it.busyStart, it.busyEnd)
+                            } +
+                            legs.map { SlotRecommender.Busy(it.start, it.end) }
                     TimelineGaps.compute(busy, from, 22 * 60)
                 } else emptyList()
 
-                val entries = (timed.map { TimelineEntry.Act(it) } + gaps.map { TimelineEntry.Gap(it) })
+                // evenimentele din calendar cu oră (nu și când filtrăm după etichetă: ele nu au etichete)
+                val timedEvents = if (activeTag == null) calendarEvents.filter { !it.allDay } else emptyList()
+
+                val entries = (timed.map { TimelineEntry.Act(it) } +
+                        timedEvents.map { TimelineEntry.Cal(it) } +
+                        gaps.map { TimelineEntry.Gap(it) } +
+                        legs.map { leg ->
+                            TimelineEntry.Travel(leg, places.find { it.id == leg.toPlaceId }?.name ?: "alt loc")
+                        })
                     .sortedBy { it.startMinute }
 
                 val activityRow: @Composable (Activity) -> Unit = { activity ->
@@ -318,6 +336,17 @@ fun DayScreen(
                             gap = entry.gap,
                             startLabel = formatMinute(entry.gap.start),
                             onAdd = { addAtMinute = entry.gap.start; showAddDialog = true }
+                        )
+                        is TimelineEntry.Cal -> CalendarTimelineItem(
+                            event = entry.event,
+                            places = places,
+                            calendarPlaces = calendarPlaces,
+                            onSetPlace = { title, placeId -> vm.setCalendarPlace(title, placeId) }
+                        )
+                        is TimelineEntry.Travel -> TimelineTravelItem(
+                            leg = entry.leg,
+                            toName = entry.toName,
+                            startLabel = formatMinute(entry.leg.start)
                         )
                         is TimelineEntry.Act -> {
                             val a = entry.activity
@@ -741,6 +770,60 @@ private fun CalendarCard(
                             onSelect = { onSetPlace(e.title, it) }
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/** Un eveniment din calendar pe linia de timp: rând gri, doar de citit, cu locul lui. */
+@Composable
+private fun CalendarTimelineItem(
+    event: CalendarReader.Event,
+    places: List<Place>,
+    calendarPlaces: Map<String, Long>,
+    onSetPlace: (title: String, placeId: Long?) -> Unit
+) {
+    TimelineItem(
+        time = formatMinute(event.startMinute),
+        marker = {
+            Text(
+                "📅",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        event.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${formatMinute(event.startMinute)}–" +
+                                (if (event.endMinute >= 24 * 60) "24:00" else formatMinute(event.endMinute)) +
+                                " · din calendar",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (event.busy && places.isNotEmpty()) {
+                    CalendarPlaceChip(
+                        current = calendarPlaces[TitleKey.of(event.title)]?.let { id -> places.find { it.id == id } },
+                        places = places,
+                        onSelect = { onSetPlace(event.title, it) }
+                    )
                 }
             }
         }

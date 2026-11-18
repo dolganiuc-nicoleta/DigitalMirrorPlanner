@@ -27,6 +27,7 @@ import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.TravelEstimator
 import md.utm.digitalmirror.domain.TravelGaps
+import md.utm.digitalmirror.domain.TimelineTravel
 import md.utm.digitalmirror.domain.TravelPlanner
 import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
@@ -84,9 +85,12 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
      * Drumurile de la și până la [placeId] din locurile date, pentru a așeza o activitate nouă.
      * Ce e deja calculat vine de pe telefon; restul se cere o singură dată.
      */
-    suspend fun travelFor(placeId: Long, busyPlaces: Collection<Long>): TravelGaps.Travel {
+    suspend fun travelFor(placeId: Long, busyPlaces: Collection<Long>): TravelGaps.Travel =
+        travelBetween(TravelGaps.pairsNeeded(listOf(placeId), busyPlaces))
+
+    /** Drumurile pentru perechile date; ce e deja calculat vine de pe telefon, restul se cere o singură dată. */
+    private suspend fun travelBetween(pairs: Set<Pair<Long, Long>>): TravelGaps.Travel {
         val mode = _travelMode.value
-        val pairs = TravelGaps.pairsNeeded(listOf(placeId), busyPlaces)
         val missing = pairs.filter { Triple(it.first, it.second, mode) !in travelCache }.toSet()
         if (missing.isNotEmpty()) {
             val found = travel.minutesFor(missing, mode)
@@ -264,6 +268,36 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         combine(_date, rules, daysOff) { date, list, off ->
             Availability.blocksFor(LocalDate.parse(date), list, off)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * Drumurile zilei afișate, pentru linia de timp: din activitățile, evenimentele din calendar și blocurile
+     * fixe care au loc. Se calculează doar pentru azi și zilele viitoare.
+     * `by lazy`, pentru că folosește fluxuri declarate mai jos în clasă (calendarul).
+     */
+    val timelineLegs: StateFlow<List<TimelineTravel.Leg>> by lazy {
+        combine(activities, calendarEvents, fixedBlocks, calendarPlaces, _travelMode) { list, events, blocks, links, _ ->
+            val active = list.filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+            val stops = active.mapNotNull { a ->
+                val start = a.plannedStartMinute ?: return@mapNotNull null
+                val place = a.placeId ?: return@mapNotNull null
+                // drumurile adăugate deja ca activitate nu sunt locuri prin care treci
+                if (TravelPlanner.TRAVEL_TAG in Tags.decode(a.tags)) return@mapNotNull null
+                TimelineTravel.Stop(start, start + (a.userEstimatedMinutes ?: a.estimatedMinutes ?: 30), place)
+            } + events.filter { it.busy && !it.allDay }.mapNotNull { e ->
+                links[TitleKey.of(e.title)]?.let { TimelineTravel.Stop(e.startMinute, e.endMinute, it) }
+            } + blocks.mapNotNull { b -> b.placeId?.let { TimelineTravel.Stop(b.start, b.end, it) } }
+            // drumurile puse de mână ca activități, ca să nu le arătăm de două ori
+            val manual = active.filter { TravelPlanner.TRAVEL_TAG in Tags.decode(it.tags) }
+                .mapNotNull { a -> a.plannedStartMinute?.let { it to it + (a.userEstimatedMinutes ?: 0) } }
+            Triple(stops, manual, _date.value)
+        }.mapLatest { (stops, manual, date) ->
+            if (stops.isEmpty() || LocalDate.parse(date).isBefore(LocalDate.now())) return@mapLatest emptyList()
+            val home = homePlaceId
+            val travel = travelBetween(TimelineTravel.pairsNeeded(stops, home))
+            TimelineTravel.legs(stops, home, travel)
+                .filter { leg -> manual.none { (s, e) -> s < leg.end && leg.start < e } }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
 
     fun toggleDayOff() = viewModelScope.launch {
         val date = _date.value
