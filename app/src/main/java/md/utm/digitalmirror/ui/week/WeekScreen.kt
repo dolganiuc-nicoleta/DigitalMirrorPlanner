@@ -44,11 +44,24 @@ private fun blockLabel(b: md.utm.digitalmirror.domain.WeekScenario.Block): Strin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel = viewModel()) {
+fun WeekScreen(
+    onBack: (() -> Unit)?,
+    onPlanTomorrow: () -> Unit,
+    startAdding: Boolean = false,
+    onStartAddingShown: () -> Unit = {},
+    vm: WeekViewModel = viewModel()
+) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
 
     var adding by remember { mutableStateOf(false) }
+    // deschis din „+ › Pentru săptămână”: direct formularul de sarcină nouă
+    LaunchedEffect(startAdding) {
+        if (startAdding) {
+            adding = true
+            onStartAddingShown()
+        }
+    }
     var scenarioInput by rememberSaveable { mutableStateOf("") }
     var pinning by remember { mutableStateOf<WeekTask?>(null) }
     var deadlineFor by remember { mutableStateOf<WeekTask?>(null) }
@@ -60,7 +73,7 @@ fun WeekScreen(onBack: () -> Unit, onPlanTomorrow: () -> Unit, vm: WeekViewModel
         topBar = {
             TopAppBar(
                 title = { Text("Săptămâna") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Înapoi") } },
+                navigationIcon = { onBack?.let { back -> TextButton(onClick = back) { Text("Înapoi") } } },
                 actions = { TextButton(onClick = onPlanTomorrow) { Text("Planifică mâine") } }
             )
         }

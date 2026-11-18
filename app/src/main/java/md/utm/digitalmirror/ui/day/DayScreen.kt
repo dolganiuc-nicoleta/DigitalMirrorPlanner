@@ -34,6 +34,12 @@ import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.MealPlanner
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import md.utm.digitalmirror.domain.DayArc
 import md.utm.digitalmirror.domain.TravelPlanner
 import md.utm.digitalmirror.domain.SleepPlanner
@@ -56,6 +62,8 @@ import java.util.Locale
 fun DayScreen(
     requestedDate: String? = null,
     onRequestedDateShown: () -> Unit = {},
+    requestAdd: Boolean = false,
+    onAddShown: () -> Unit = {},
     onCloseDay: (String) -> Unit = {},
     onOpenActivity: (Long) -> Unit = {},
     onPlan: () -> Unit = {},
@@ -136,6 +144,15 @@ fun DayScreen(
 
     LaunchedEffect(Unit) { vm.refreshRunning() }
 
+    // „+ › Ceva acum”: formularul de activitate, cu ora propusă
+    LaunchedEffect(requestAdd) {
+        if (requestAdd) {
+            addAtMinute = null
+            showAddDialog = true
+            onAddShown()
+        }
+    }
+
     // la revenirea în aplicație recitim calendarul (poate ai adăugat un eveniment între timp)
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -203,12 +220,11 @@ fun DayScreen(
                 )
             }
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { addAtMinute = null; showAddDialog = true }) { Text("+") }
-        }
+        // fără buton „+” aici: planificarea are un singur loc, „+” din mijlocul barei de jos
     ) { padding ->
 
-        if (activities.isEmpty() && calendarEvents.isEmpty() && fixedBlocks.isEmpty() && !isDayOff) {
+        // ecranul gol doar pentru zilele fără arc (trecute); azi și zilele viitoare au mereu arcul
+        if (dayArc == null && activities.isEmpty() && calendarEvents.isEmpty() && fixedBlocks.isEmpty() && !isDayOff) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -222,12 +238,6 @@ fun DayScreen(
                         if (isToday) "Nicio activitate pentru astăzi"
                         else "Nicio activitate în această zi"
                     )
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onPlan) { Text("Plan rapid") }
-                        OutlinedButton(onClick = onPlanWeek) { Text("Săptămâna") }
-                        OutlinedButton(onClick = onPrep) { Text("Pregătire") }
-                    }
                     // reflecția se poate face și într-o zi fără activități
                     if (canClose) {
                         Spacer(Modifier.height(16.dp))
@@ -254,18 +264,13 @@ fun DayScreen(
                     }
                 }
 
-                // scurtături vizibile către planificare
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val tight = PaddingValues(horizontal = 4.dp)
-                        OutlinedButton(onClick = onPlan, contentPadding = tight, modifier = Modifier.weight(1f)) { Text("Plan rapid", maxLines = 1) }
-                        OutlinedButton(onClick = onPlanWeek, contentPadding = tight, modifier = Modifier.weight(1f)) { Text("Săptămâna", maxLines = 1) }
-                        OutlinedButton(onClick = onPrep, contentPadding = tight, modifier = Modifier.weight(1f)) { Text("Pregătire", maxLines = 1) }
-                    }
+                // încărcarea zilei, un rând discret sub arc (doar pentru azi și zilele viitoare)
+                dayLoad?.takeIf { analysisOn && date >= LocalDate.now().toString() && it.plannedMinutes > 0 }?.let { load ->
+                    item(key = "day-load") { DayLoadCard(load) }
                 }
 
-                // somnul și pașii zilei
-                health?.let { item { HealthSummary(it) } }
+                // somnul și pașii zilei: doar pentru zilele trecute (azi și mâine le arată arcul și confirmarea de dimineață)
+                if (dayArc == null) health?.let { item { HealthSummary(it) } }
 
                 // evenimentele din calendarul telefonului
                 if (isDayOff) {
@@ -309,10 +314,6 @@ fun DayScreen(
                     }
                 }
 
-                // încărcarea zilei, doar pentru azi și zilele viitoare
-                dayLoad?.takeIf { analysisOn && date >= LocalDate.now().toString() && it.plannedMinutes > 0 }?.let { load ->
-                    item { DayLoadCard(load) }
-                }
 
                 // filtrarea după etichete
                 if (dayTags.isNotEmpty()) {
@@ -384,9 +385,9 @@ fun DayScreen(
                         } +
                         legs.filter { it.prepMinutes > 0 }.map { TimelineEntry.Prep(it) } +
                         meals.map { TimelineEntry.Meal(it) } +
-                        // trezirea sus și culcarea jos (nu și când filtrăm după etichetă)
-                        listOfNotNull(sleep?.takeIf { activeTag == null }?.let { TimelineEntry.Wake(it) }) +
-                        listOfNotNull(sleep?.takeIf { activeTag == null }?.let { TimelineEntry.Bed(it) }))
+                        // trezirea și culcarea: le arată arcul de sus; în listă doar dacă arcul lipsește
+                        listOfNotNull(sleep?.takeIf { activeTag == null && dayArc == null }?.let { TimelineEntry.Wake(it) }) +
+                        listOfNotNull(sleep?.takeIf { activeTag == null && dayArc == null }?.let { TimelineEntry.Bed(it) }))
                     .sortedBy { it.startMinute }
 
                 val activityRow: @Composable (Activity) -> Unit = { activity ->
@@ -610,16 +611,16 @@ private fun ActivityRow(
                 ) {
                     Text(activity.title, fontWeight = FontWeight.Medium)
 
+                    // pe scurt: când, unde, cât; starea doar când nu e cea obișnuită („planificată” se înțelege)
                     val details = buildList {
                         activity.plannedStartMinute?.let { start ->
                             val end = activity.userEstimatedMinutes?.let { start + it }
                             add(if (end != null) "${formatMinute(start)}–${formatMinute(end)}" else formatMinute(start))
-                        }
+                        } ?: activity.userEstimatedMinutes?.let { add(formatDuration(it)) }
                         categoryName?.let { add(it) }
                         placeName?.let { add("la $it") }
-                        activity.userEstimatedMinutes?.let { add("planificat ${formatDuration(it)}") }
                         if (!isRunning) activity.actualMinutes?.let { add("real ${formatDuration(it)}") }
-                        add(stateLabel(activity.state))
+                        if (activity.state != "PLANNED") add(stateLabel(activity.state))
                         postponedLabel(activity.postponedCount)?.let { add(it) }
                     }.joinToString(" · ")
 
@@ -901,35 +902,39 @@ private fun CalendarTimelineItem(
     calendarPlaces: Map<String, Long>,
     onSetPlace: (title: String, placeId: Long?) -> Unit
 ) {
+    // un card clar, ca un curs: punctul în culoarea aplicației, titlul, până când, locul
     TimelineItem(
         time = formatMinute(event.startMinute),
         marker = {
-            Text(
-                "📅",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 8.dp)
+            Box(
+                Modifier
+                    .padding(top = 18.dp)
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
             )
         }
     ) {
         Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                modifier = Modifier.padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         event.title,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${formatMinute(event.startMinute)}–" +
-                                (if (event.endMinute >= 24 * 60) "24:00" else formatMinute(event.endMinute)) +
+                        "până la " + (if (event.endMinute >= 24 * 60) "24:00" else formatMinute(event.endMinute)) +
                                 " · din calendar",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1065,52 +1070,39 @@ private fun SleepCheckCard(
 }
 
 @Composable
+/**
+ * Încărcarea zilei, discret: un rând sub arc. Iese în evidență doar când ziua e prea plină.
+ */
 private fun DayLoadCard(load: DayLoad.Result) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
-        )
+    val overloaded = load.status == DayLoad.Status.OVERLOADED
+    val planned = formatDuration(load.plannedMinutes)
+    val text = when (load.status) {
+        DayLoad.Status.NO_HISTORY -> "$planned planificat · încă învăț ritmul tău (${load.daysUsed} din ${DayLoad.MIN_DAYS} zile)"
+        DayLoad.Status.OVERLOADED ->
+            "$planned planificat, de obicei reușești ~${formatDuration(load.typicalMinutes!!)}. Ziua e prea plină."
+        DayLoad.Status.LIGHT -> "$planned planificat · mai ai loc pentru ceva"
+        DayLoad.Status.OK -> "$planned planificat · o zi realistă pentru tine"
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (overloaded) MaterialTheme.colorScheme.errorContainer else Color.Transparent)
+            .padding(horizontal = if (overloaded) 12.dp else 4.dp, vertical = if (overloaded) 10.dp else 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Încărcarea zilei", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Text(
-                    load.typicalMinutes?.let { "${formatDuration(load.plannedMinutes)} / ${formatDuration(it)} obișnuit" }
-                        ?: "${formatDuration(load.plannedMinutes)} planificat",
-                    style = MaterialTheme.typography.titleSmall
-                )
-            }
-
-            load.typicalMinutes?.let { typical ->
-                LinearProgressIndicator(
-                    progress = { (load.plannedMinutes.toFloat() / typical).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(6.dp),
-                    color = if (load.status == DayLoad.Status.OVERLOADED) MaterialTheme.colorScheme.tertiaryContainer
-                    else MaterialTheme.colorScheme.onPrimary,
-                    trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f)
-                )
-            }
-
-            Text(
-                when (load.status) {
-                    DayLoad.Status.NO_HISTORY ->
-                        "Încă învăț cât reușești de obicei într-o zi (${load.daysUsed} din ${DayLoad.MIN_DAYS} zile)."
-                    DayLoad.Status.OVERLOADED ->
-                        "De obicei reușești ~${formatDuration(load.typicalMinutes!!)} într-o zi ca asta. " +
-                                "Ziua e supraîncărcată cu ${formatDuration(load.difference)}."
-                    DayLoad.Status.LIGHT ->
-                        "Ai planificat mai puțin decât reușești de obicei. Mai ai loc pentru ceva."
-                    DayLoad.Status.OK ->
-                        "Pare o zi realistă pentru tine."
-                },
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (overloaded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+        )
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (overloaded) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

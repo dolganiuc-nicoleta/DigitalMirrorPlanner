@@ -1,17 +1,30 @@
 package md.utm.digitalmirror.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import md.utm.digitalmirror.ui.mirror.MIRROR_TAB_CAPSULE
+import md.utm.digitalmirror.ui.mirror.MirrorScreen
+import md.utm.digitalmirror.ui.plan.PlanChoice
+import md.utm.digitalmirror.ui.plan.PlanHubSheet
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -63,6 +76,7 @@ object Routes {
     const val AUTH = "auth"
     const val PLACES = "places"
     const val ACTIVITY = "activity/{id}"
+    const val MIRROR = "mirror"
 
     fun closing(date: String) = "closing/$date"
     fun activity(id: Long) = "activity/$id"
@@ -72,16 +86,24 @@ object Routes {
 /** Cheia prin care un ecran cere ecranului zilei să arate o anumită dată. */
 private const val OPEN_DATE = "open_date"
 
-// tab-urile din bara de jos
+/** Cheia prin care „+ › Ceva acum” cere ecranului zilei să deschidă formularul de activitate. */
+private const val OPEN_ADD = "open_add"
+
+/** Cheia prin care „+ › Pentru săptămână” cere ecranului săptămânii să deschidă o sarcină nouă. */
+private const val OPEN_NEW_TASK = "open_new_task"
+
+// tab-urile din bara de jos; în mijloc stă „+”, singurul loc din care planifici
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
-private val tabs = listOf(
-    Tab(Routes.DAY, "Zi", Icons.Filled.Today),
-    Tab(Routes.STATS, "Statistici", Icons.Filled.BarChart),
-    Tab(Routes.GOALS, "Obiective", Icons.Filled.Flag),
-    Tab(Routes.CAPSULE, "Capsulă", Icons.Filled.Email),
-    Tab(Routes.PROFILE, "Profil", Icons.Filled.Person)
+private val leftTabs = listOf(
+    Tab(Routes.DAY, "Azi", Icons.Outlined.WbSunny),
+    Tab(Routes.WEEK, "Săptămâna", Icons.Outlined.CalendarMonth)
 )
+private val rightTabs = listOf(
+    Tab(Routes.MIRROR, "Oglinda", Icons.Outlined.Insights),
+    Tab(Routes.PROFILE, "Eu", Icons.Outlined.Person)
+)
+private val tabs = leftTabs + rightTabs
 
 @Composable
 fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
@@ -106,33 +128,74 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
     // ca notificarea să deschidă Închiderea zilei o singură dată
     var notificationHandled by rememberSaveable { mutableStateOf(false) }
     var capsuleHandled by rememberSaveable { mutableStateOf(false) }
+    var mirrorTab by rememberSaveable { mutableIntStateOf(0) }
+    var planHubOpen by rememberSaveable { mutableStateOf(false) }
+
+    fun openTab(route: String) {
+        navController.navigate(route) {
+            // nu adunăm ecrane în stivă la fiecare apăsare pe tab
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                    @Composable
+                    fun RowScope.TabItem(tab: Tab) {
                         NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(tab.route) {
-                                    // nu adunăm ecrane în stivă la fiecare apăsare pe tab
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                            label = { Text(tab.label) }
+                            selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true,
+                            onClick = { openTab(tab.route) },
+                            icon = { Icon(tab.icon, contentDescription = null) },
+                            label = { Text(tab.label, maxLines = 1) }
                         )
                     }
+                    leftTabs.forEach { TabItem(it) }
+                    // „+”: un cerc mare, ridicat, în mijloc
+                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Surface(
+                            onClick = { planHubOpen = true },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            contentColor = MaterialTheme.colorScheme.surface,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier
+                                .size(58.dp)
+                                .semantics { contentDescription = "Planifică: ce ai de făcut?" }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(28.dp))
+                            }
+                        }
+                    }
+                    rightTabs.forEach { TabItem(it) }
                 }
             }
         }
     ) { innerPadding ->
+        if (planHubOpen) {
+            PlanHubSheet(
+                onDismiss = { planHubOpen = false },
+                onChoose = { choice ->
+                    planHubOpen = false
+                    when (choice) {
+                        PlanChoice.WRITE -> navController.navigate(Routes.PLAN)
+                        PlanChoice.NOW -> {
+                            openTab(Routes.DAY)
+                            runCatching { navController.getBackStackEntry(Routes.DAY).savedStateHandle[OPEN_ADD] = true }
+                        }
+                        PlanChoice.WEEK -> {
+                            openTab(Routes.WEEK)
+                            runCatching { navController.getBackStackEntry(Routes.WEEK).savedStateHandle[OPEN_NEW_TASK] = true }
+                        }
+                        PlanChoice.EVENT -> navController.navigate(Routes.PREP_NEW)
+                    }
+                }
+            )
+        }
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -150,9 +213,12 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 }
                 // ziua cerută de alt ecran (de ex. „Deschide ziua de mâine” din închiderea zilei)
                 val requested by entry.savedStateHandle.getStateFlow<String?>(OPEN_DATE, null).collectAsState()
+                val requestAdd by entry.savedStateHandle.getStateFlow(OPEN_ADD, false).collectAsState()
                 DayScreen(
                     requestedDate = requested,
                     onRequestedDateShown = { entry.savedStateHandle[OPEN_DATE] = null },
+                    requestAdd = requestAdd,
+                    onAddShown = { entry.savedStateHandle[OPEN_ADD] = false },
                     onCloseDay = { date -> navController.navigate(Routes.closing(date)) },
                     onOpenActivity = { id -> navController.navigate(Routes.activity(id)) },
                     onPlan = { navController.navigate(Routes.PLAN) },
@@ -191,6 +257,11 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 })
             }
 
+            // Oglinda: statistici, obiective, capsule
+            composable(Routes.MIRROR) {
+                MirrorScreen(initialTab = mirrorTab, onOpenReport = { navController.navigate(Routes.REPORT) })
+            }
+
             composable(Routes.STATS) {
                 StatsScreen(onOpenReport = { navController.navigate(Routes.REPORT) })
             }
@@ -199,10 +270,14 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 PlanScreen(onBack = { navController.popBackStack() })
             }
 
-            composable(Routes.WEEK) {
+            // Săptămâna e acum un tab: fără „Înapoi”
+            composable(Routes.WEEK) { entry ->
+                val newTask by entry.savedStateHandle.getStateFlow(OPEN_NEW_TASK, false).collectAsState()
                 WeekScreen(
-                    onBack = { navController.popBackStack() },
-                    onPlanTomorrow = { navController.navigate(Routes.PLAN) }
+                    onBack = null,
+                    onPlanTomorrow = { navController.navigate(Routes.PLAN) },
+                    startAdding = newTask,
+                    onStartAddingShown = { entry.savedStateHandle[OPEN_NEW_TASK] = false }
                 )
             }
 
@@ -295,7 +370,8 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
         LaunchedEffect(openCapsule) {
             if (openCapsule && !capsuleHandled && startDestination != Routes.ONBOARDING && startDestination != Routes.AUTH) {
                 capsuleHandled = true
-                navController.navigate(Routes.CAPSULE)
+                mirrorTab = MIRROR_TAB_CAPSULE
+                openTab(Routes.MIRROR)
             }
         }
     }

@@ -1,10 +1,15 @@
 package md.utm.digitalmirror.ui.day
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Checkroom
+import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -13,8 +18,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.entity.Activity
@@ -119,31 +131,56 @@ private fun SleepRow(emoji: String, time: String, title: String, subtitle: Strin
     }
 }
 
-/** „🍽 Prânz · ~30 min”: locul păstrat pentru masă, ales din fereastra ei. */
+// culorile rândurilor discrete: mesele calde, ca pe arc
+private val MealSoft = Color(0xFFF6E3CC)
+private val MealInk = Color(0xFF8A4E17)
+
+/**
+ * Un rând discret (masă, pregătire, drum): ora, o iconiță mică, un text pe o linie.
+ * Lucrurile care leagă ziua nu trebuie să arate la fel de important ca un curs.
+ */
 @Composable
-internal fun TimelineMealItem(meal: MealPlanner.Slot, startLabel: String) {
+private fun QuietRow(
+    time: String,
+    icon: ImageVector,
+    iconTint: Color,
+    iconBackground: Color?,
+    content: @Composable () -> Unit
+) {
     TimelineItem(
-        time = startLabel,
+        time = time,
         marker = {
-            Text(
-                meal.kind.emoji,
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            Box(
+                Modifier
+                    .padding(top = 4.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(iconBackground ?: Color.Transparent),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(16.dp))
+            }
         }
     ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            Text(
-                meal.kind.label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "~${formatDuration(meal.end - meal.start)} · loc păstrat pentru masă",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Box(Modifier.fillMaxWidth().heightIn(min = 36.dp), contentAlignment = Alignment.CenterStart) { content() }
+    }
+}
+
+/** „Prânz · 30 min · loc păstrat”: locul păstrat pentru masă, ales din fereastra ei. */
+@Composable
+internal fun TimelineMealItem(meal: MealPlanner.Slot, startLabel: String) {
+    QuietRow(startLabel, Icons.Outlined.Restaurant, MealInk, MealSoft) {
+        Text(
+            buildAnnotatedString {
+                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)) {
+                    append(meal.kind.label)
+                }
+                append("  ${formatDuration(meal.end - meal.start)} · loc păstrat")
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
     }
 }
 
@@ -176,59 +213,40 @@ internal fun MissingMealsNote(missing: List<MealPlanner.Window>) {
 
 private fun clock(minute: Int): String = "%d:%02d".format(minute / 60, minute % 60)
 
-/** „Pregătire de plecare · 15 min”: îmbrăcat, geantă, încălțat. */
+/** „Te pregătești · pleci la 14:46”: îmbrăcat, geantă, încălțat. */
 @Composable
 internal fun TimelinePrepItem(leg: TimelineTravel.Leg, startLabel: String) {
-    TimelineItem(
-        time = startLabel,
-        marker = {
-            Text(
-                "🧥",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-    ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            Text(
-                "Pregătire de plecare",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "~${formatDuration(leg.prepMinutes)} · îmbrăcat, geantă",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+    QuietRow(startLabel, Icons.Outlined.Checkroom, MaterialTheme.colorScheme.onSurfaceVariant, null) {
+        Text(
+            buildAnnotatedString {
+                append("Te pregătești · pleci la ")
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)) {
+                    append(clock(leg.start))
+                }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
     }
 }
 
-/** Un drum: „Drum spre Facultate · ~35 min (+10 marjă)”; cu avertisment când nu încape. */
+/** „Spre Facultate · ajungi la 15:15 · 19 min”; cu avertisment când nu încape. */
 @Composable
 internal fun TimelineTravelItem(leg: TimelineTravel.Leg, toName: String, startLabel: String) {
-    TimelineItem(
-        time = startLabel,
-        marker = {
+    QuietRow(startLabel, Icons.AutoMirrored.Outlined.DirectionsWalk, MaterialTheme.colorScheme.onSurfaceVariant, null) {
+        Column {
             Text(
-                "🚶",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-    ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            val margin = (leg.end - leg.start - leg.travelMinutes).coerceAtLeast(0)
-            Text(
-                "Drum spre $toName",
+                buildAnnotatedString {
+                    append("Spre $toName · ajungi la ")
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)) {
+                        append(clock(leg.end))
+                    }
+                    append(" · ${formatDuration(leg.travelMinutes)}")
+                },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "~${formatDuration(leg.travelMinutes)}" +
-                        (if (margin > 0) " + ${formatDuration(margin)} marjă" else ""),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
             )
             if (leg.tight) {
                 Text(
@@ -242,8 +260,8 @@ internal fun TimelineTravelItem(leg: TimelineTravel.Leg, toName: String, startLa
 }
 
 /**
- * Un rând cu linia verticală: ora în stânga, un semn pe linie și conținutul în dreapta.
- * Linia se prelungește puțin sub rând, ca să se unească cu rândul următor.
+ * Un rând din linia de timp: ora în stânga, un semn mic, conținutul în dreapta.
+ * Fără linie verticală: ierarhia vine din conținut (carduri pentru ce contează, rânduri subțiri pentru rest).
  */
 @Composable
 internal fun TimelineItem(
@@ -251,77 +269,76 @@ internal fun TimelineItem(
     marker: @Composable () -> Unit,
     content: @Composable () -> Unit
 ) {
-    val lineColor = MaterialTheme.colorScheme.outlineVariant
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+    Row(Modifier.fillMaxWidth()) {
         Text(
             time ?: "",
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.End,
             maxLines = 1,
             softWrap = false,
-            modifier = Modifier.width(44.dp).padding(top = 12.dp, end = 6.dp)
+            modifier = Modifier.width(46.dp).padding(top = 10.dp)
         )
-        Box(
-            modifier = Modifier
-                .width(40.dp)
-                .fillMaxHeight()
-                .drawBehind {
-                    val x = size.width / 2
-                    drawLine(lineColor, Offset(x, 0f), Offset(x, size.height + 8.dp.toPx()), strokeWidth = 2.dp.toPx())
-                },
-            contentAlignment = Alignment.TopCenter
-        ) { marker() }
-        Box(Modifier.weight(1f).padding(start = 8.dp)) { content() }
+        Box(Modifier.width(32.dp), contentAlignment = Alignment.TopCenter) { marker() }
+        Box(Modifier.weight(1f).padding(start = 6.dp)) { content() }
     }
 }
 
-/** Cercul de pe linie: litera categoriei, sau ✓ când activitatea e terminată. */
+/** Semnul unei activități: un punct în culoarea aplicației, sau ✓ când e terminată. */
 @Composable
 internal fun TimelineMarker(letter: String, done: Boolean) {
-    Box(
-        modifier = Modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            if (done) "✓" else letter,
-            style = MaterialTheme.typography.titleSmall,
-            color = if (done) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+    if (done) {
+        Box(
+            Modifier
+                .padding(top = 8.dp)
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Outlined.Check, contentDescription = "terminată", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp))
+        }
+    } else {
+        Box(
+            Modifier
+                .padding(top = 14.dp)
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
         )
     }
 }
 
-/** Un spațiu liber: „Ai 2 h liberi” și un buton care deschide formularul cu ora deja completată. */
+/** Un spațiu liber: un loc punctat, „2h 15 libere”, și „Adaugă” cu ora deja completată. */
 @Composable
 internal fun TimelineGapItem(gap: TimelineGaps.Gap, startLabel: String, onAdd: () -> Unit) {
-    TimelineItem(
-        time = startLabel,
-        marker = {
-            Box(
-                Modifier
-                    .padding(top = 12.dp)
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape)
-            )
-        }
-    ) {
+    val dash = MaterialTheme.colorScheme.outline
+    TimelineItem(time = startLabel, marker = {}) {
         Row(
-            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    drawRoundRect(
+                        color = dash,
+                        cornerRadius = CornerRadius(18.dp.toPx()),
+                        style = Stroke(
+                            width = 1.5.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))
+                        )
+                    )
+                }
+                .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Ai ${formatDuration(gap.minutes)} liberi",
+                "${formatDuration(gap.minutes)} libere",
                 style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
             )
-            FilledTonalButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                Text("+ Adaugă", maxLines = 1)
+            FilledTonalButton(onClick = onAdd, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                Text("Adaugă", maxLines = 1)
             }
         }
     }
