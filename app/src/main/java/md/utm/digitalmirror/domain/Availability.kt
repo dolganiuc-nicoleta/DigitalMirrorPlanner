@@ -28,7 +28,8 @@ object Availability {
         val startMinute: Int,
         val endMinute: Int,
         val travelBefore: Int,
-        val travelAfter: Int
+        val travelAfter: Int,
+        val placeId: Long? = null
     )
 
     /** Un bloc într-o zi anume, cu drumul inclus. */
@@ -38,8 +39,16 @@ object Availability {
         val start: Int,
         val end: Int,
         val travelBefore: Int,
-        val travelAfter: Int
+        val travelAfter: Int,
+        val placeId: Long? = null
     ) {
+        /**
+         * Blocul fără drum, dar cu locul lui și drumul fix ca rezervă:
+         * [TravelGaps] calculează drumul după ce urmează și folosește drumul fix doar când nu poate.
+         */
+        fun asBusy(): SlotRecommender.Busy =
+            SlotRecommender.Busy(start, end, placeId, travelBefore, travelAfter)
+
         /** Începutul intervalului ocupat, cu drumul dus. */
         val busyStart: Int get() = (start - travelBefore).coerceAtLeast(0)
 
@@ -57,7 +66,7 @@ object Availability {
         if (date.toString() in daysOff) return emptyList()
         return rules
             .filter { it.endMinute > it.startMinute && appliesOn(it.daysMask, date.dayOfWeek) }
-            .map { Block(it.id, it.title, it.startMinute, it.endMinute, it.travelBefore, it.travelAfter) }
+            .map { Block(it.id, it.title, it.startMinute, it.endMinute, it.travelBefore, it.travelAfter, it.placeId) }
             .sortedBy { it.busyStart }
     }
 

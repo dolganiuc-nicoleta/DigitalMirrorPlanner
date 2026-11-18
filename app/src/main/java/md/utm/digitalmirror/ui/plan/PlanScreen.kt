@@ -200,7 +200,7 @@ private fun ProposalCard(
 
                 if (placement.conflict) {
                     Text(
-                        "Ora cerută se suprapune cu altceva din zi.",
+                        "Ora cerută se suprapune cu altceva din zi sau nu lasă timp de drum.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )

@@ -27,8 +27,18 @@ object SlotRecommender {
     /** O activitate închisă din istoric: când a început și dacă a fost finalizată complet. */
     data class Outcome(val startMinute: Int, val success: Boolean)
 
-    /** Un interval deja ocupat în ziua respectivă, în minute de la miezul nopții. */
-    data class Busy(val start: Int, val end: Int)
+    /**
+     * Un interval deja ocupat în ziua respectivă, în minute de la miezul nopții.
+     * [placeId] = unde are loc (dacă știm); [travelBefore]/[travelAfter] = drumul fix, folosit
+     * de [TravelGaps] când drumul real nu se poate calcula.
+     */
+    data class Busy(
+        val start: Int,
+        val end: Int,
+        val placeId: Long? = null,
+        val travelBefore: Int = 0,
+        val travelAfter: Int = 0
+    )
 
     data class Suggestion(
         val startMinute: Int,

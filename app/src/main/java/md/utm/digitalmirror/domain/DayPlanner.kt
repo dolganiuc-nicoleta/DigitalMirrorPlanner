@@ -22,7 +22,8 @@ object DayPlanner {
         val minutes: Int,
         val startMinute: Int?,
         val dayPart: PlanParser.DayPart?,
-        val history: List<SlotRecommender.Outcome> = emptyList()
+        val history: List<SlotRecommender.Outcome> = emptyList(),
+        val placeId: Long? = null          // unde are loc; contează pentru drumul de dinainte și de după
     )
 
     enum class Reason { CHOSEN_BY_USER, FROM_HISTORY, FIRST_FREE, NO_ROOM }
@@ -36,25 +37,31 @@ object DayPlanner {
         val placed: Boolean get() = startMinute != null
     }
 
-    /** Rezultatul are aceeași ordine ca [items]. */
+    /**
+     * Rezultatul are aceeași ordine ca [items].
+     * Fiecare activitate vede intervalele ocupate lărgite cu drumul dintre locul ei și locul lor ([TravelGaps]).
+     */
     fun place(
         items: List<Item>,
         busy: List<Busy>,
         earliestStart: Int,
-        latestEnd: Int = 23 * 60
+        latestEnd: Int = 23 * 60,
+        travel: TravelGaps.Travel = TravelGaps.NONE,
+        margin: Int = TravelGaps.DEFAULT_MARGIN
     ): List<Placement> {
         val result = arrayOfNulls<Placement>(items.size)
         val occupied = busy.toMutableList()
 
-        // 1. ora spusă de utilizator rămâne cum a spus-o, chiar dacă se suprapune; semnalăm conflictul
+        // 1. ora spusă de utilizator rămâne cum a spus-o, chiar dacă se suprapune (și cu drumul); semnalăm conflictul
         items.forEachIndexed { index, item ->
             val start = item.startMinute ?: return@forEachIndexed
             val end = start + item.minutes
+            val view = TravelGaps.expand(occupied, item.placeId, travel, margin)
             result[index] = Placement(
                 start, end, Reason.CHOSEN_BY_USER,
-                conflict = !SlotRecommender.isFree(start, end, occupied)
+                conflict = !SlotRecommender.isFree(start, end, view)
             )
-            occupied += Busy(start, end)
+            occupied += Busy(start, end, item.placeId)
         }
 
         // 2. cu moment al zilei, în ordinea momentelor; 3. fără indicii, în ordinea scrisă
@@ -69,13 +76,14 @@ object DayPlanner {
             val from = if (part != null) maxOf(earliestStart, part.from) else earliestStart
             val lastEnd = if (part != null) minOf(latestEnd, part.to - GRACE + item.minutes) else latestEnd
 
-            val fromHistory = SlotRecommender.suggest(item.history, item.minutes, occupied, from, lastEnd)
-            val slot = fromHistory ?: SlotRecommender.firstFree(item.minutes, occupied, from, lastEnd)
+            val view = TravelGaps.expand(occupied, item.placeId, travel, margin)
+            val fromHistory = SlotRecommender.suggest(item.history, item.minutes, view, from, lastEnd)
+            val slot = fromHistory ?: SlotRecommender.firstFree(item.minutes, view, from, lastEnd)
 
             result[index] = if (slot == null) {
                 Placement(null, null, Reason.NO_ROOM)
             } else {
-                occupied += Busy(slot.startMinute, slot.endMinute)
+                occupied += Busy(slot.startMinute, slot.endMinute, item.placeId)
                 Placement(
                     slot.startMinute, slot.endMinute,
                     if (fromHistory != null) Reason.FROM_HISTORY else Reason.FIRST_FREE

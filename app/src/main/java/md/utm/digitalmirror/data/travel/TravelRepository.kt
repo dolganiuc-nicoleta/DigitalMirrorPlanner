@@ -24,11 +24,38 @@ class TravelRepository(context: Context) {
         val distanceMeters: Double
     )
 
-    suspend fun estimate(from: Place, to: Place, mode: TravelEstimator.Mode): Result<Outcome> {
+    suspend fun estimate(from: Place, to: Place, mode: TravelEstimator.Mode): Result<Outcome> =
+        estimate(from, to, mode, allowNetwork = true)
+
+    /**
+     * Drumurile pentru toate perechile date, în minute, pentru planificare.
+     * Drumurile deja calculate vin de pe telefon; restul se cer de la serviciul de rute.
+     * La prima eroare de rețea nu mai încercăm rețeaua (ca planificarea să nu aștepte la fiecare pereche);
+     * perechile fără răspuns lipsesc din rezultat, iar planificarea folosește atunci drumul fix.
+     */
+    suspend fun minutesFor(pairs: Set<Pair<Long, Long>>, mode: TravelEstimator.Mode): Map<Pair<Long, Long>, Int> {
+        if (pairs.isEmpty()) return emptyMap()
+        val places = db.placeDao().getAll().associateBy { it.id }
+        val result = mutableMapOf<Pair<Long, Long>, Int>()
+        var network = true
+        for (pair in pairs) {
+            val from = places[pair.first] ?: continue
+            val to = places[pair.second] ?: continue
+            estimate(from, to, mode, allowNetwork = network)
+                .onSuccess { result[pair] = it.estimate.minutes }
+                .onFailure { if (it is RouteService.RouteException) network = false }
+        }
+        return result
+    }
+
+    private suspend fun estimate(
+        from: Place, to: Place, mode: TravelEstimator.Mode, allowNetwork: Boolean
+    ): Result<Outcome> {
         val routes = db.travelRouteDao()
         val raw = routes.get(from.id, to.id, mode.orsProfile)
             ?.let { RouteService.Raw(it.distanceMeters, it.durationSeconds) }
             ?: run {
+                if (!allowNetwork) return Result.failure(IllegalStateException("Drumul nu e calculat încă."))
                 val fetched = RouteService.fetch(mode.orsProfile, from, to)
                     .getOrElse { return Result.failure(it) }
                 routes.upsert(
