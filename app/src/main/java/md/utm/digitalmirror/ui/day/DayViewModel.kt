@@ -364,6 +364,47 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     }
 
+    // ---- confirmarea somnului, dimineața ----
+
+    private val sleepPrefs by lazy { app.getSharedPreferences("sleep_check", android.content.Context.MODE_PRIVATE) }
+    private val sleepCheckRefresh = MutableStateFlow(0)
+
+    /**
+     * Noaptea trecută de confirmat, doar pentru azi și doar dacă n-ai confirmat-o (sau introdus-o) deja.
+     * null = nu întrebăm nimic.
+     */
+    val sleepCheck: StateFlow<SleepPlanner.Check?> by lazy {
+        combine(_date, health, sleepCheckRefresh) { date, record, _ -> date to record }
+            .mapLatest { (date, record) ->
+                val day = LocalDate.parse(date)
+                if (day != LocalDate.now()) return@mapLatest null
+                if (record?.sleepSource == "MANUAL") return@mapLatest null
+                if (sleepPrefs.getString(KEY_DISMISSED, null) == date) return@mapLatest null
+                val saved = record?.let { SleepPlanner.Night(it.sleepMinutes, it.bedtimeMinute, it.wakeMinute) }
+                SleepPlanner.check(saved, DayBusy.recentNights(app, day))
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    }
+
+    /** Salvează noaptea trecută cum a confirmat-o utilizatorul; Health nu o mai suprascrie. */
+    fun confirmSleep(bedtime: Int, wake: Int) = viewModelScope.launch {
+        val today = LocalDate.now().toString()
+        val existing = dailyActivityDao.getByDate(today)
+        dailyActivityDao.upsert(
+            (existing ?: DailyActivity(date = today, steps = null, activeMinutes = null)).copy(
+                sleepMinutes = SleepPlanner.duration(bedtime, wake),
+                bedtimeMinute = bedtime,
+                wakeMinute = wake,
+                sleepSource = "MANUAL"
+            )
+        )
+    }
+
+    /** „Azi nu mai întreba.” */
+    fun dismissSleepCheck() {
+        sleepPrefs.edit().putString(KEY_DISMISSED, LocalDate.now().toString()).apply()
+        sleepCheckRefresh.value++
+    }
+
     fun toggleDayOff() = viewModelScope.launch {
         val date = _date.value
         if (isDayOff.value) availabilityDao.deleteDayOff(date) else availabilityDao.insertDayOff(DayOff(date))
@@ -536,5 +577,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun dismissFinish() {
         _finishDraft.value = null
+    }
+
+    private companion object {
+        const val KEY_DISMISSED = "dismissed_date"
     }
 }

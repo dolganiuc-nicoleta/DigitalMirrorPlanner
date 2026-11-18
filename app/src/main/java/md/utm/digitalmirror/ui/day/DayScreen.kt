@@ -34,6 +34,7 @@ import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.MealPlanner
+import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.domain.TimelineGaps
 import md.utm.digitalmirror.domain.TravelGaps
 import md.utm.digitalmirror.ui.components.DurationField
@@ -74,6 +75,7 @@ fun DayScreen(
     val skeleton by vm.skeleton.collectAsState()
     val sleep by vm.sleep.collectAsState()
     val dayWindow by vm.dayWindow.collectAsState()
+    val sleepCheck by vm.sleepCheck.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
     val legs by vm.legs.collectAsState()
     val travelMode by vm.travelMode.collectAsState()
@@ -246,6 +248,17 @@ fun DayScreen(
                             places = places,
                             calendarPlaces = calendarPlaces,
                             onSetPlace = { title, placeId -> vm.setCalendarPlace(title, placeId) }
+                        )
+                    }
+                }
+
+                // dimineața: confirmarea nopții trecute, dintr-un tap
+                sleepCheck?.let { check ->
+                    item(key = "sleep-check") {
+                        SleepCheckCard(
+                            check = check,
+                            onConfirm = { bed, wake -> vm.confirmSleep(bed, wake) },
+                            onDismiss = { vm.dismissSleepCheck() }
                         )
                     }
                 }
@@ -918,6 +931,90 @@ private fun CalendarPlaceChip(current: Place?, places: List<Place>, onSelect: (L
                 )
             }
         }
+    }
+}
+
+/**
+ * „😴 Ai dormit 0:15–9:00?” cu ✓ Da / Schimbă / ×.
+ * Confirmarea salvează noaptea ca introdusă de tine, iar aplicația de somn nu o mai suprascrie.
+ */
+@Composable
+private fun SleepCheckCard(
+    check: SleepPlanner.Check,
+    onConfirm: (bedtime: Int, wake: Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var bed by remember(check) { mutableStateOf(check.bedtime) }
+    var wake by remember(check) { mutableStateOf(check.wake) }
+    var pickingBed by remember { mutableStateOf(false) }
+    var pickingWake by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "😴 Ai dormit ${SleepPlanner.clock(bed)}–${SleepPlanner.clock(wake)}?",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onDismiss) { Text("×") }
+            }
+            val note = when {
+                check.fromHealth -> "din aplicația de somn · ${formatDuration(SleepPlanner.duration(bed, wake))}"
+                check.partialHealth != null -> {
+                    val p = check.partialHealth
+                    "aplicația de somn a salvat doar " +
+                            (if (p.bedtime != null && p.wake != null) "${SleepPlanner.clock(p.bedtime)}–${SleepPlanner.clock(p.wake)}" else "o parte") +
+                            ", așa că îți propun ritmul tău obișnuit"
+                }
+                else -> "ritmul tău obișnuit · ${formatDuration(SleepPlanner.duration(bed, wake))}"
+            }
+            Text(
+                note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            if (editing) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp, end = 12.dp)
+                ) {
+                    OutlinedButton(onClick = { pickingBed = true }, modifier = Modifier.weight(1f)) {
+                        Text("🌙 ${SleepPlanner.clock(bed)}")
+                    }
+                    OutlinedButton(onClick = { pickingWake = true }, modifier = Modifier.weight(1f)) {
+                        Text("☀️ ${SleepPlanner.clock(wake)}")
+                    }
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                Button(onClick = { onConfirm(bed, wake) }) { Text(if (editing) "Salvează" else "✓ Da") }
+                if (!editing) TextButton(onClick = { editing = true }) { Text("Schimbă") }
+            }
+        }
+    }
+
+    if (pickingBed) {
+        TimePickerDialog(
+            initialMinute = bed,
+            onDismiss = { pickingBed = false },
+            onConfirm = { bed = it; pickingBed = false }
+        )
+    }
+    if (pickingWake) {
+        TimePickerDialog(
+            initialMinute = wake,
+            onDismiss = { pickingWake = false },
+            onConfirm = { wake = it; pickingWake = false }
+        )
     }
 }
 

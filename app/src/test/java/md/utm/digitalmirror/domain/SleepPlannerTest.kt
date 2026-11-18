@@ -72,6 +72,30 @@ class SleepPlannerTest {
     }
 
     @Test
+    fun `confirmarea propune noaptea din health cand e intreaga`() {
+        val c = SleepPlanner.check(Night(450, h(0, 15), h(7, 45)), usual)
+        assertEquals(h(0, 15), c.bedtime)
+        assertEquals(h(7, 45), c.wake)
+        assertEquals(true, c.fromHealth)
+        assertEquals(450, c.minutes)
+    }
+
+    @Test
+    fun `confirmarea ignora noaptea salvata pe jumatate si propune ritmul obisnuit`() {
+        val c = SleepPlanner.check(Night(200, h(4, 10), h(7, 30)), usual)
+        assertEquals(h(0, 30), c.bedtime)
+        assertEquals(h(9), c.wake)
+        assertEquals(false, c.fromHealth)
+        assertEquals(200, c.partialHealth?.sleepMinutes)
+    }
+
+    @Test
+    fun `durata peste miezul noptii`() {
+        assertEquals(h(8, 30), SleepPlanner.duration(h(23, 30), h(8)))
+        assertEquals(h(7), SleepPlanner.duration(h(1), h(8)))
+    }
+
+    @Test
     fun `noptile ciudate nu strica media`() {
         val nights = usual + Night(60, h(4), h(5)) + Night(900, h(20), h(11))
         val p = SleepPlanner.plan(nights, firstStart = null)

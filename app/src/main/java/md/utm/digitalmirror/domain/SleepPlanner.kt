@@ -89,6 +89,36 @@ object SleepPlanner {
 
     const val DEFAULT_BEDTIME = 23 * 60
 
+    /** Cât ai dormit între [bedtime] și [wake] (minute de la miezul nopții), și peste miezul nopții. */
+    fun duration(bedtime: Int, wake: Int): Int = ((wake - bedtime) % DAY + DAY) % DAY
+
+    /** Ce propunem la confirmarea de dimineață. */
+    data class Check(
+        val bedtime: Int,                   // minute de la miezul nopții (0–1439)
+        val wake: Int,
+        val fromHealth: Boolean,            // orele vin din aplicația de somn
+        val partialHealth: Night? = null    // aplicația a salvat doar o bucată din noapte
+    ) {
+        val minutes: Int get() = duration(bedtime, wake)
+    }
+
+    /**
+     * Noaptea de confirmat: cea salvată de aplicația de somn, dacă e credibilă;
+     * altfel ritmul tău obișnuit (sau 23:00–7:00), cu bucata salvată arătată separat.
+     */
+    fun check(saved: Night?, recent: List<Night>): Check {
+        if (saved != null && plausible(saved) && saved.bedtime != null && saved.wake != null) {
+            return Check(saved.bedtime, saved.wake, fromHealth = true)
+        }
+        val good = recent.filter(::plausible)
+        val beds = good.mapNotNull { it.bedtime }.map { if (it < 12 * 60) it + DAY else it }
+        val wakes = good.mapNotNull { it.wake }
+        val bed = (if (beds.size >= MIN_NIGHTS) median(beds) else DEFAULT_BEDTIME) % DAY
+        val wake = if (wakes.size >= MIN_NIGHTS) median(wakes) else 7 * 60
+        val partial = saved?.takeIf { it.sleepMinutes != null }
+        return Check(bed, wake, fromHealth = false, partialHealth = partial)
+    }
+
     /** Ora scrisă ca pe ceas, și pentru valorile de peste 24:00. */
     fun clock(minute: Int): String {
         val m = ((minute % DAY) + DAY) % DAY
