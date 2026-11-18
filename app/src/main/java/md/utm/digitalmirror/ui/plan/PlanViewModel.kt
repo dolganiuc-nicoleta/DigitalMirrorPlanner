@@ -15,7 +15,9 @@ import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.prefs.AnalysisPrefs
+import md.utm.digitalmirror.data.prefs.TravelPrefs
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.data.travel.TravelRepository
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.CategoryGuess
 import md.utm.digitalmirror.domain.DayPlanner
@@ -24,6 +26,7 @@ import md.utm.digitalmirror.domain.PlaceGuess
 import md.utm.digitalmirror.domain.PlanParser
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.TitleKey
+import md.utm.digitalmirror.domain.TravelGaps
 import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
 import java.time.LocalDate
@@ -64,6 +67,7 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
     private val repo = PlannerRepository(db.activityDao(), db.categoryDao(), db.workSessionDao())
     private val analysisOn = AnalysisPrefs.isEnabled(app)
+    private val travelRepo = TravelRepository(app)
 
     /** Locurile salvate, pentru lista „Loc” de la fiecare activitate. */
     val places: StateFlow<List<Place>> = db.placeDao().observeAll()
@@ -136,12 +140,13 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /** Locul ales de utilizator pentru o activitate; null = fără loc. */
+    /** Locul ales de utilizator pentru o activitate; null = fără loc. Schimbă drumurile, deci și orele. */
     fun setPlace(index: Int, placeId: Long?) {
         placeOverride[index] = placeId
         _state.value = _state.value.copy(
             proposals = _state.value.proposals?.map { if (it.index == index) it.copy(placeId = placeId) else it }
         )
+        if (work != null) viewModelScope.launch { recompute() }
     }
 
     /** Folosește durata din istoric în locul celei spuse. */
@@ -190,19 +195,33 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
             maxOf(7 * 60, now.hour * 60 + now.minute + 10)
         } else 7 * 60
 
-        // 3. așezarea pe ore
+        // 3. locul fiecărei activități: ales de utilizator, ghicit din text/istoric
+        val placeIds = prepared.indices.map { index ->
+            if (index in placeOverride) placeOverride[index]
+            else PlaceGuess.guess(prepared[index].draft.title, w.placeList, w.placeHistory)
+        }
+        // pentru drum, o activitate fără loc ghicit se presupune acasă (dacă utilizatorul nu a ales „fără loc”)
+        val home = TravelPrefs.homePlaceId(app)
+        val travelPlaceIds = placeIds.mapIndexed { index, id ->
+            id ?: home?.takeIf { index !in placeOverride }
+        }
+        val travel = travelFor(travelPlaceIds.filterNotNull(), busy.mapNotNull { it.placeId })
+
+        // 4. așezarea pe ore, cu drumurile dintre locuri
         val placements = DayPlanner.place(
-            prepared.map {
+            prepared.mapIndexed { index, it ->
                 DayPlanner.Item(
                     title = it.draft.title,
                     minutes = it.minutes,
                     startMinute = it.draft.startMinute,
                     dayPart = it.draft.dayPart,
-                    history = it.category?.let { c -> w.slotHistory[c.id] }.orEmpty()
+                    history = it.category?.let { c -> w.slotHistory[c.id] }.orEmpty(),
+                    placeId = travelPlaceIds[index]
                 )
             },
             busy,
-            earliest
+            earliest,
+            travel = travel
         )
 
         _state.value = UiState(
@@ -218,8 +237,7 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
                     historyMinutes = p.historyMinutes,
                     dayPart = p.draft.dayPart,
                     placement = placements[index],
-                    placeId = if (index in placeOverride) placeOverride[index]
-                    else PlaceGuess.guess(p.draft.title, w.placeList, w.placeHistory),
+                    placeId = placeIds[index],
                     include = index !in excluded
                 )
             },
@@ -227,26 +245,43 @@ class PlanViewModel(private val app: Application) : AndroidViewModel(app) {
         )
     }
 
-    // activități, calendar și blocuri fixe din ziua aleasă
+    // drumurile deja calculate în această sesiune, ca schimbările mici să nu ceară din nou rețeaua
+    private val travelCache = mutableMapOf<Pair<Long, Long>, Int?>()
+
+    /** Drumurile dintre locurile activităților noi și locurile a ce e deja ocupat. */
+    private suspend fun travelFor(candidates: List<Long>, busyPlaces: List<Long>): TravelGaps.Travel {
+        val pairs = TravelGaps.pairsNeeded(candidates.toSet(), busyPlaces.toSet())
+        val missing = pairs - travelCache.keys
+        if (missing.isNotEmpty()) {
+            val found = travelRepo.minutesFor(missing, TravelPrefs.mode(app))
+            missing.forEach { travelCache[it] = found[it] }
+        }
+        val known = travelCache.toMap()
+        return TravelGaps.Travel { from, to -> known[from to to] }
+    }
+
+    // activități, calendar și blocuri fixe din ziua aleasă, cu locul lor (pentru drum)
     private suspend fun busyFor(date: LocalDate): List<SlotRecommender.Busy> {
         val activities = repo.observeActivitiesForDate(date.toString()).first()
             .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
             .mapNotNull { a ->
-                a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) }
+                a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30), a.placeId) }
             }
+        // evenimentele din calendar, cu locul ales pentru numele lor (pentru drum)
+        val calendarPlaces = db.calendarPlaceDao().getAll().associate { it.titleKey to it.placeId }
         val calendar = CalendarReader.eventsFor(app, date).filter { it.busy }
-            .map { SlotRecommender.Busy(it.startMinute, it.endMinute) }
+            .map { SlotRecommender.Busy(it.startMinute, it.endMinute, calendarPlaces[TitleKey.of(it.title)]) }
 
         val availability = db.availabilityDao()
         val rules = availability.observeRules().first().map {
             Availability.Rule(
                 it.id, it.title, it.daysMask, it.startMinute, it.endMinute,
-                it.travelBeforeMinutes, it.travelAfterMinutes
+                it.travelBeforeMinutes, it.travelAfterMinutes, it.placeId
             )
         }
         val daysOff = availability.observeDaysOff().first().map { it.date }.toSet()
-        val blocks = Availability.blocksFor(date, rules, daysOff)
-            .map { SlotRecommender.Busy(it.busyStart, it.busyEnd) }
+        // fără drum inclus: drumul se calculează după locul activității noi (drumul fix rămâne rezervă)
+        val blocks = Availability.blocksFor(date, rules, daysOff).map { it.asBusy() }
 
         return activities + calendar + blocks
     }

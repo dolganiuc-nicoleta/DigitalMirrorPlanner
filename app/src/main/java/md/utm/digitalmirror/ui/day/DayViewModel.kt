@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import md.utm.digitalmirror.data.calendar.CalendarReader
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
+import md.utm.digitalmirror.data.entity.CalendarPlace
 import md.utm.digitalmirror.data.entity.Category
 import md.utm.digitalmirror.data.entity.DayOff
 import md.utm.digitalmirror.data.entity.DailyActivity
@@ -23,7 +24,9 @@ import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.HistoryEstimator
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
+import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.TravelEstimator
+import md.utm.digitalmirror.domain.TravelGaps
 import md.utm.digitalmirror.domain.TravelPlanner
 import md.utm.digitalmirror.reminder.ActivityReminders
 import md.utm.digitalmirror.ui.onboarding.OnboardingPrefs
@@ -67,12 +70,50 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             list.map {
                 Availability.Rule(
                     it.id, it.title, it.daysMask, it.startMinute, it.endMinute,
-                    it.travelBeforeMinutes, it.travelAfterMinutes
+                    it.travelBeforeMinutes, it.travelAfterMinutes, it.placeId
                 )
             }
         }
 
     private val travel = TravelRepository(app)
+
+    // drumurile dintre locuri calculate în această sesiune (pentru formular), pe moduri de deplasare
+    private val travelCache = mutableMapOf<Triple<Long, Long, TravelEstimator.Mode>, Int?>()
+
+    /**
+     * Drumurile de la și până la [placeId] din locurile date, pentru a așeza o activitate nouă.
+     * Ce e deja calculat vine de pe telefon; restul se cere o singură dată.
+     */
+    suspend fun travelFor(placeId: Long, busyPlaces: Collection<Long>): TravelGaps.Travel {
+        val mode = _travelMode.value
+        val pairs = TravelGaps.pairsNeeded(listOf(placeId), busyPlaces)
+        val missing = pairs.filter { Triple(it.first, it.second, mode) !in travelCache }.toSet()
+        if (missing.isNotEmpty()) {
+            val found = travel.minutesFor(missing, mode)
+            missing.forEach { travelCache[Triple(it.first, it.second, mode)] = found[it] }
+        }
+        val known = travelCache.toMap()
+        return TravelGaps.Travel { from, to -> known[Triple(from, to, mode)] }
+    }
+
+    /** Locul de unde pleci de obicei; o activitate fără loc se presupune acolo, pentru drum. */
+    val homePlaceId: Long? get() = TravelPrefs.homePlaceId(app)
+
+    private val calendarPlaceDao = AppDatabase.get(app).calendarPlaceDao()
+
+    /** Locul evenimentelor din calendar, după titlul lor normalizat (TitleKey). */
+    val calendarPlaces: StateFlow<Map<String, Long>> =
+        calendarPlaceDao.observeAll()
+            .map { list -> list.associate { it.titleKey to it.placeId } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Alege locul pentru toate evenimentele din calendar cu acest nume; null = fără loc. */
+    fun setCalendarPlace(eventTitle: String, placeId: Long?) = viewModelScope.launch {
+        val key = TitleKey.of(eventTitle)
+        if (key.isEmpty()) return@launch
+        if (placeId == null) calendarPlaceDao.delete(key)
+        else calendarPlaceDao.upsert(CalendarPlace(key, placeId, CalendarPlace.SOURCE_USER))
+    }
 
     // 2. starea
     private val _date = MutableStateFlow(LocalDate.now().toString())

@@ -33,9 +33,10 @@ import md.utm.digitalmirror.domain.TitleKey
         PresenceLog::class,
         TravelRoute::class,
         PrepEvent::class,
-        PrepStep::class
+        PrepStep::class,
+        CalendarPlace::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,6 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun presenceLogDao(): PresenceLogDao
     abstract fun travelRouteDao(): TravelRouteDao
     abstract fun prepDao(): PrepDao
+    abstract fun calendarPlaceDao(): CalendarPlaceDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -318,6 +320,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v17 → v18: locul evenimentelor din calendar, după numele lor (pentru drum)
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `calendar_place` (" +
+                            "`titleKey` TEXT NOT NULL, `placeId` INTEGER NOT NULL, `source` TEXT NOT NULL, " +
+                            "`updatedAt` INTEGER NOT NULL, PRIMARY KEY(`titleKey`))"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -325,7 +338,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "digitalmirror.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                     .build()
                     .also { INSTANCE = it }
             }

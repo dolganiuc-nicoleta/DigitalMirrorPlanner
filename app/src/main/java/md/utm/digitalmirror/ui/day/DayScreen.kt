@@ -34,6 +34,7 @@ import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.TimelineGaps
+import md.utm.digitalmirror.domain.TravelGaps
 import md.utm.digitalmirror.ui.components.DurationField
 import md.utm.digitalmirror.ui.components.formatDuration
 import kotlin.math.abs
@@ -68,6 +69,7 @@ fun DayScreen(
     val dayLoad by vm.dayLoad.collectAsState()
     val calendarEvents by vm.calendarEvents.collectAsState()
     val fixedBlocks by vm.fixedBlocks.collectAsState()
+    val calendarPlaces by vm.calendarPlaces.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
     val legs by vm.legs.collectAsState()
     val travelMode by vm.travelMode.collectAsState()
@@ -232,7 +234,14 @@ fun DayScreen(
                     }
                 }
                 if (calendarEvents.isNotEmpty()) {
-                    item { CalendarCard(calendarEvents) }
+                    item {
+                        CalendarCard(
+                            events = calendarEvents,
+                            places = places,
+                            calendarPlaces = calendarPlaces,
+                            onSetPlace = { title, placeId -> vm.setCalendarPlace(title, placeId) }
+                        )
+                    }
                 }
 
                 // încărcarea zilei, doar pentru azi și zilele viitoare
@@ -376,6 +385,9 @@ fun DayScreen(
             loadSlotHistory = { vm.slotHistory(it) },
             calendarEvents = calendarEvents,
             fixedBlocks = fixedBlocks,
+            loadTravel = { placeId, others -> vm.travelFor(placeId, others) },
+            homePlaceId = vm.homePlaceId,
+            calendarPlaces = calendarPlaces,
             analysisOn = analysisOn,
             onDismiss = { showAddDialog = false; addAtMinute = null },
             onAddCategory = { vm.addCategory(it) },
@@ -403,6 +415,9 @@ fun DayScreen(
             loadSlotHistory = { vm.slotHistory(it) },
             calendarEvents = calendarEvents,
             fixedBlocks = fixedBlocks,
+            loadTravel = { placeId, others -> vm.travelFor(placeId, others) },
+            homePlaceId = vm.homePlaceId,
+            calendarPlaces = calendarPlaces,
             analysisOn = analysisOn,
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
@@ -681,8 +696,17 @@ private fun FixedBlocksCard(blocks: List<Availability.Block>) {
     }
 }
 
+/**
+ * Evenimentele din calendar. Fiecare eveniment cu oră are un buton de loc: alegerea se ține minte
+ * pentru toate evenimentele cu același nume (orarul se repetă), iar drumurile se calculează după el.
+ */
 @Composable
-private fun CalendarCard(events: List<CalendarReader.Event>) {
+private fun CalendarCard(
+    events: List<CalendarReader.Event>,
+    places: List<Place>,
+    calendarPlaces: Map<String, Long>,
+    onSetPlace: (title: String, placeId: Long?) -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -709,7 +733,48 @@ private fun CalendarCard(events: List<CalendarReader.Event>) {
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    // locul contează doar pentru evenimentele care ocupă timp și doar dacă există locuri
+                    if (!e.allDay && e.busy && places.isNotEmpty()) {
+                        CalendarPlaceChip(
+                            current = calendarPlaces[TitleKey.of(e.title)]?.let { id -> places.find { it.id == id } },
+                            places = places,
+                            onSelect = { onSetPlace(e.title, it) }
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+// „📍 Facultate” sau „📍 Unde e?”; la apăsare, lista locurilor
+@Composable
+private fun CalendarPlaceChip(current: Place?, places: List<Place>, onSelect: (Long?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        TextButton(
+            onClick = { open = true },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+        ) {
+            Text(
+                "📍 " + (current?.name ?: "Unde e?"),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            places.forEach { place ->
+                DropdownMenuItem(
+                    text = { Text(place.name) },
+                    onClick = { onSelect(place.id); open = false }
+                )
+            }
+            if (current != null) {
+                DropdownMenuItem(
+                    text = { Text("fără loc") },
+                    onClick = { onSelect(null); open = false }
+                )
             }
         }
     }
@@ -882,6 +947,9 @@ private fun ActivityDialog(
     loadSlotHistory: suspend (Long) -> List<SlotRecommender.Outcome>,
     calendarEvents: List<CalendarReader.Event>,
     fixedBlocks: List<Availability.Block>,
+    loadTravel: suspend (placeId: Long, others: Collection<Long>) -> TravelGaps.Travel,
+    homePlaceId: Long?,
+    calendarPlaces: Map<String, Long>,
     analysisOn: Boolean,
     onDismiss: () -> Unit,
     onAddCategory: (String) -> Unit,
@@ -935,21 +1003,60 @@ private fun ActivityDialog(
         value = selectedCategory?.id?.let { loadSlotHistory(it) } ?: emptyList()
     }
 
+    // ce e deja ocupat în zi, cu locul fiecăruia (pentru drum)
+    val dayBusy = remember(dayActivities, calendarEvents, fixedBlocks, calendarPlaces, initial?.id) {
+        dayActivities
+            .filter { it.id != initial?.id && it.state != "ABANDONED" && it.state != "POSTPONED" }
+            .mapNotNull { a ->
+                a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30), a.placeId) }
+            } +
+                // orele ocupate din calendar (fără cele de toată ziua și cele marcate „liber”), cu locul ales pentru ele
+                calendarEvents.filter { it.busy }.map {
+                    SlotRecommender.Busy(it.startMinute, it.endMinute, calendarPlaces[TitleKey.of(it.title)])
+                } +
+                // blocurile fixe: drumul se calculează după locul activității, cel fix rămâne rezervă
+                fixedBlocks.map { it.asBusy() }
+    }
+
+    // unde va fi activitatea, pentru drum: locul ales, altfel acasă
+    val travelPlaceId = selectedPlaceId ?: homePlaceId
+    val busyPlaces = remember(dayBusy) { dayBusy.mapNotNull { it.placeId }.toSet() }
+    val travel by produceState(TravelGaps.NONE, travelPlaceId, busyPlaces) {
+        value = travelPlaceId?.let { loadTravel(it, busyPlaces) } ?: TravelGaps.NONE
+    }
+    val busyWithTravel = TravelGaps.expand(dayBusy, travelPlaceId, travel)
+
+    // ora aleasă (sau venită din spațiul liber) nu lasă timp de drum: propunem cea mai devreme oră potrivită
+    val travelFix = run {
+        val start = startMinute ?: return@run null
+        if (LocalDate.parse(date).isBefore(LocalDate.now())) return@run null
+        val duration = plannedMinutes ?: estimate?.minutes ?: 30
+        val overlapsWithoutTravel = !SlotRecommender.isFree(start, start + duration, dayBusy)
+        if (overlapsWithoutTravel || SlotRecommender.isFree(start, start + duration, busyWithTravel)) return@run null
+        // doar drumul e problema: ce lucru din zi e prea aproape și cât e drumul până la el
+        val near = dayBusy.firstOrNull { b ->
+            val e = TravelGaps.expand(listOf(b), travelPlaceId, travel).first()
+            start < e.end && e.start < start + duration
+        }
+        val fit = TravelGaps.earliestFit(start, duration, dayBusy, travelPlaceId, travel) ?: return@run null
+        TravelFix(
+            moveTo = fit,
+            placeName = near?.placeId?.let { id -> places.find { it.id == id }?.name },
+            minutes = near?.let { b ->
+                if (b.end <= start) TravelGaps.needed(b.placeId, travelPlaceId, travel) ?: b.travelAfter
+                else TravelGaps.needed(travelPlaceId, b.placeId, travel) ?: b.travelBefore
+            },
+            afterIt = near != null && near.end <= start
+        )
+    }
+
     // intervalul recomandat; doar când ora nu e aleasă și ziua nu e în trecut
     val slotSuggestion = run {
         val day = LocalDate.parse(date)
         val today = LocalDate.now()
         if (!analysisOn || !revealed || startMinute != null || day.isBefore(today)) return@run null
 
-        val busy = dayActivities
-            .filter { it.id != initial?.id && it.state != "ABANDONED" && it.state != "POSTPONED" }
-            .mapNotNull { a ->
-                a.plannedStartMinute?.let { SlotRecommender.Busy(it, it + (a.userEstimatedMinutes ?: 30)) }
-            } +
-                // orele ocupate din calendar (fără cele de toată ziua și cele marcate „liber”)
-                calendarEvents.filter { it.busy }.map { SlotRecommender.Busy(it.startMinute, it.endMinute) } +
-                // blocurile fixe, cu drumul dus și întors inclus
-                fixedBlocks.map { SlotRecommender.Busy(it.busyStart, it.busyEnd) }
+        val busy = busyWithTravel
 
         val earliest = if (day == today) {
             val now = LocalTime.now()
@@ -1150,6 +1257,11 @@ private fun ActivityDialog(
                         }
                     }
 
+                    // ora aleasă nu lasă timp de drum
+                    travelFix?.let { fix ->
+                        TravelFixHint(fix = fix, onMove = { startMinute = fix.moveTo })
+                    }
+
                     OutlinedTextField(
                         value = tagsInput,
                         onValueChange = { tagsInput = it },
@@ -1336,12 +1448,56 @@ private fun SlotHint(
                     if (slot.fromHistory)
                         "~${slot.successPercent}% finalizate la această oră · " +
                                 "${slot.nearbyCount} din ${slot.sampleSize} activități $categoryName în jur"
-                    else "Primul interval liber, ținând cont de activități și calendar",
+                    else "Primul interval liber, ținând cont de activități, calendar și drumuri",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
             }
             TextButton(onClick = onUse) { Text("Folosește") }
+        }
+    }
+}
+
+/** Ora aleasă nu lasă timp de drum; [moveTo] e cea mai devreme oră la care încape. */
+private class TravelFix(
+    val moveTo: Int,
+    val placeName: String?,     // locul de lângă care e drumul, dacă îl știm
+    val minutes: Int?,          // drumul cu tot cu marjă
+    val afterIt: Boolean        // drumul e de la acel loc (true) sau până la el (false)
+)
+
+// caseta „nu ai timp de drum”, cu propunerea unei ore potrivite
+@Composable
+private fun TravelFixHint(fix: TravelFix, onMove: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Nu ai timp de drum",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                val road = when {
+                    fix.placeName != null && fix.minutes != null ->
+                        (if (fix.afterIt) "De la ${fix.placeName}" else "Până la ${fix.placeName}") +
+                                " ai ~${formatDuration(fix.minutes)} cu tot cu marja."
+                    fix.minutes != null -> "Drumul durează ~${formatDuration(fix.minutes)} cu tot cu marja."
+                    else -> null
+                }
+                Text(
+                    listOfNotNull(road, "Cel mai devreme la ${formatMinute(fix.moveTo)}.").joinToString(" "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+            TextButton(onClick = onMove) { Text("Mută la ${formatMinute(fix.moveTo)}") }
         }
     }
 }

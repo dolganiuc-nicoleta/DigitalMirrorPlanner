@@ -82,6 +82,7 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
         db.withTransaction {
             dao.unlinkActivities(place.id)
             availabilityDao.unlinkPlace(place.id)
+            db.calendarPlaceDao().deleteForPlace(place.id)
             presenceDao.deleteForPlace(place.id)
             routeDao.deleteForPlace(place.id)
             dao.delete(place.id)
