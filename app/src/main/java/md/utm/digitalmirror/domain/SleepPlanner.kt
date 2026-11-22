@@ -75,9 +75,9 @@ object SleepPlanner {
 
     /**
      * Intervalul în care se pot pune lucruri flexibile (sesiuni, activități noi): de la trezirea ta obișnuită
-     * plus dimineața, până la ora ta obișnuită de culcare. Așa o sarcină flexibilă nu te scoală mai devreme;
-     * doar lucrurile fixe (cursuri, programări) pot muta trezirea.
-     * Fără destule nopți: 8:20–23:00.
+     * plus dimineața, până la o oră înainte de culcare (perna de seară). Așa o sarcină flexibilă nu te scoală
+     * mai devreme și nu te ține treaz; doar lucrurile fixe (cursuri, programări) pot muta trezirea.
+     * Fără destule nopți: 8:20–22:00.
      */
     fun activeWindow(nights: List<Night>, chosenWake: Int? = null): Pair<Int, Int> {
         val good = nights.filter(::plausible)
@@ -86,12 +86,17 @@ object SleepPlanner {
         val wake = chosenWake ?: if (wakes.size >= MIN_NIGHTS) median(wakes) else DEFAULT_WAKE
         val bed = if (beds.size >= MIN_NIGHTS) median(beds) else DEFAULT_BEDTIME
         val start = wake + MORNING_MINUTES
-        val end = bed.coerceAtMost(DAY)
+        // perna de seară: nimic flexibil în ultima oră dinainte de culcare
+        val end = (bed - WIND_DOWN_MINUTES).coerceAtMost(DAY)
         // un ritm ciudat (date greșite) nu are voie să lase o zi aproape fără loc
-        return if (end - start >= 8 * 60) start to end else (DEFAULT_WAKE + MORNING_MINUTES) to DEFAULT_BEDTIME
+        return if (end - start >= 8 * 60) start to end
+        else (DEFAULT_WAKE + MORNING_MINUTES) to (DEFAULT_BEDTIME - WIND_DOWN_MINUTES)
     }
 
     const val DEFAULT_BEDTIME = 23 * 60
+
+    /** Perna de seară: în ultima oră dinainte de culcare nu punem sesiuni sau activități flexibile. */
+    const val WIND_DOWN_MINUTES = 60
 
     /** Cât ai dormit între [bedtime] și [wake] (minute de la miezul nopții), și peste miezul nopții. */
     fun duration(bedtime: Int, wake: Int): Int = ((wake - bedtime) % DAY + DAY) % DAY

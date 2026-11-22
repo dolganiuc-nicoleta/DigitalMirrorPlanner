@@ -64,14 +64,10 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         val unscheduledMinutes: Int          // cât mai e de făcut și nu are încă sesiune în plan
     )
 
-    private class Outcome(val sessions: Int, val unplacedMinutes: Int, val chancePercent: Int?, val noDays: Boolean)
-
     private val db = AppDatabase.get(app)
     private val prep = db.prepDao()
-    private val repo = PlannerRepository(db.activityDao(), db.categoryDao(), db.workSessionDao())
-    private val availability = db.availabilityDao()
-    private val analysisOn = AnalysisPrefs.isEnabled(app)
-    private val travelMatrix = TravelMatrix(app)
+    // așezarea pașilor pe zile (comună cu „Ce ai de făcut?”)
+    private val scheduler = PrepScheduler(app)
 
     // ---- lista evenimentelor ----
 
@@ -104,11 +100,8 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Salvează evenimentul cu pașii lui și așază sesiunile în zile. */
     fun create(title: String, date: LocalDate, steps: List<PrepTemplates.StepDraft>, onDone: (Long, String) -> Unit) =
         viewModelScope.launch {
-            val id = prep.insertEvent(PrepEvent(title = title.trim(), eventDate = date.toString()))
-            steps.forEachIndexed { index, s ->
-                prep.insertStep(PrepStep(eventId = id, title = s.title.trim(), minutes = s.minutes, position = index))
-            }
-            onDone(id, message(schedule(id)))
+            val (id, outcome) = scheduler.create(title, date, steps)
+            onDone(id, PrepScheduler.message(outcome))
         }
 
     /** Refă sesiunile neîncepute, din azi încolo, pentru ce a rămas de făcut. */
@@ -116,7 +109,7 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         val from = LocalDate.now().toString()
         prep.movableSessions(eventId, from).forEach { ActivityReminders.onActivityClosed(app, it.id) }
         prep.deleteMovable(eventId, from)
-        onDone(message(schedule(eventId)))
+        onDone(PrepScheduler.message(scheduler.schedule(eventId)))
     }
 
     /** Pasul e gata: se socotește 100% și sesiunile lui neîncepute dispar, ca timpul să se elibereze. */
@@ -130,7 +123,7 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Pasul se redeschide și ce a rămas din el se așază din nou în zile. */
     fun reopenStep(step: PrepStep, onDone: (String) -> Unit) = viewModelScope.launch {
         prep.updateStep(step.copy(completed = false))
-        onDone(message(schedule(step.eventId)))
+        onDone(PrepScheduler.message(scheduler.schedule(step.eventId)))
     }
 
     /** Șterge evenimentul și sesiunile neîncepute; ce ai terminat rămâne în istoric. */
@@ -143,98 +136,7 @@ class PrepViewModel(private val app: Application) : AndroidViewModel(app) {
         onDone()
     }
 
-    // ---- așezarea pe zile ----
-
-    private suspend fun schedule(eventId: Long): Outcome {
-        val event = prep.observeEvent(eventId).first() ?: return Outcome(0, 0, null, true)
-        val steps = prep.getSteps(eventId)
-        val today = LocalDate.now()
-        val eventDate = LocalDate.parse(event.eventDate)
-
-        // cel mult 60 de zile, cele mai apropiate de eveniment
-        val days = PrepPlanner.daysBefore(eventDate, today).takeLast(MAX_DAYS)
-        if (days.isEmpty()) return Outcome(0, 0, null, true)
-
-        // cât s-a lucrat deja la fiecare pas
-        val existing = prep.getSessions(eventId)
-        val remaining = steps.filter { !it.completed }.map { step ->
-            val done = existing.filter { it.prepStepId == step.id && it.state in DONE_STATES }.sumOf { it.actualMinutes ?: 0 }
-            step to (step.minutes - done).coerceAtLeast(0)
-        }.filter { it.second > 0 }
-        if (remaining.isEmpty()) return Outcome(0, 0, null, false)
-
-        // pregătirea se face de obicei acasă: sesiunile lasă timp de drum față de ce e în alt loc
-        val home = travelMatrix.homePlaceId
-        val windows = PrepPlanner.windows(days, remaining.map { it.second })
-        val tasks = remaining.mapIndexed { index, (step, minutes) ->
-            WeekPlanner.Task(
-                id = step.id,
-                title = "${event.title}: ${step.title}",
-                totalMinutes = minutes,
-                sessionMinutes = minOf(minutes, SESSION_MINUTES),
-                deadline = windows[index].to,
-                notBefore = windows[index].from,
-                placeId = home
-            )
-        }
-
-        // ce e deja ocupat în fiecare zi, cu locul fiecărui lucru
-        val rules = DayBusy.rules(app)
-        val daysOff = availability.observeDaysOff().first().map { it.date }.toSet()
-        val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in daysOff } else emptyList()
-        val calendarPlaces = DayBusy.calendarPlaces(app)
-        val inputs = days.map { date ->
-            // sesiunile stau între trezire (cea obișnuită sau cea aleasă pentru ziua asta) și ora de culcare
-            val (dayStart, dayEnd) = DayBusy.window(app, date)
-            val fixed = repo.observeActivitiesForDate(date.toString()).first()
-                .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
-            val busy = mutableListOf<SlotRecommender.Busy>()
-            busy += DayBusy.activities(fixed)
-            busy += DayBusy.calendar(app, date, calendarPlaces)
-            busy += DayBusy.blocks(date, rules, daysOff)
-            // mesele din ferestrele tale: sesiunile nu se pun peste ele
-            busy += travelMatrix.skeleton(busy.toList(), date).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
-            if (date.toString() in daysOff) busy += SlotRecommender.Busy(0, 24 * 60)
-            val planned = fixed.sumOf { it.userEstimatedMinutes ?: it.estimatedMinutes ?: 0 }
-            val typical = if (analysisOn) DayLoad.compute(0, totals, date).typicalMinutes else null
-            WeekPlanner.DayInput(date, busy, planned, typical, dayStart, dayEnd)
-        }
-
-        val earliestToday = LocalTime.now().let { maxOf(8 * 60, it.hour * 60 + it.minute + 10) }
-        val travel = travelMatrix.forPlanning(listOfNotNull(home), inputs.flatMap { day -> day.busy.mapNotNull { it.placeId } })
-        val plan = WeekPlanner.plan(tasks, inputs, null, earliestToday, today, travel)
-
-        for (s in plan.sessions) {
-            val activity = Activity(
-                title = s.title,
-                categoryId = null,
-                date = s.date.toString(),
-                plannedStartMinute = s.startMinute,
-                userGuessMinutes = s.minutes,
-                estimatedMinutes = null,
-                userEstimatedMinutes = s.minutes,
-                actualMinutes = null,
-                prepStepId = s.taskId
-            )
-            val id = repo.addActivity(activity)
-            ActivityReminders.onActivityPlanned(app, activity.copy(id = id))
-        }
-        return Outcome(plan.sessions.size, plan.unplaced.sumOf { it.minutes }, plan.chancePercent, false)
-    }
-
-    private fun message(o: Outcome): String = when {
-        o.noDays -> "Evenimentul e azi sau a trecut, deci nu mai am zile de planificat."
-        o.sessions == 0 -> "Nu era nimic de așezat."
-        else -> buildString {
-            append("Am așezat ${o.sessions} ${if (o.sessions == 1) "sesiune" else "sesiuni"}.")
-            if (o.unplacedMinutes > 0) append(" ${formatDuration(o.unplacedMinutes)} n-au încăput.")
-            o.chancePercent?.let { append(" Șanse: $it%.") }
-        }
-    }
-
     companion object {
-        private const val MAX_DAYS = 60
-        private const val SESSION_MINUTES = 90
         private val DONE_STATES = setOf("DONE", "PARTIAL")
         private val OPEN_STATES = setOf("PLANNED", "IN_PROGRESS")
 

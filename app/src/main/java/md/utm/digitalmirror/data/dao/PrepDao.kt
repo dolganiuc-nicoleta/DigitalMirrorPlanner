@@ -27,6 +27,10 @@ interface PrepDao {
     @Query("SELECT * FROM prep_step WHERE eventId = :eventId ORDER BY position")
     suspend fun getSteps(eventId: Long): List<PrepStep>
 
+    /** Ziua evenimentului pentru un pas (ca o sesiune mutată să rămână înaintea evenimentului). */
+    @Query("SELECT e.eventDate FROM prep_event e JOIN prep_step s ON s.eventId = e.id WHERE s.id = :stepId")
+    suspend fun eventDateForStep(stepId: Long): String?
+
     @Insert
     suspend fun insertEvent(event: PrepEvent): Long
 

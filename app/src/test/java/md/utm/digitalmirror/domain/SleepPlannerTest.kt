@@ -53,14 +53,21 @@ class SleepPlannerTest {
     fun `lucrurile flexibile incep dupa trezirea obisnuita si dimineata`() {
         val (start, end) = SleepPlanner.activeWindow(usual)
         assertEquals(h(9, 20), start)          // 9:00 + 20 min
-        assertEquals(h(24), end)               // culcarea la 0:30 → până la miezul nopții
+        assertEquals(h(23, 30), end)           // culcarea la 0:30, minus perna de seară de o oră
     }
 
     @Test
     fun `fara istoric - interval implicit`() {
         val (start, end) = SleepPlanner.activeWindow(emptyList())
         assertEquals(h(8, 20), start)
-        assertEquals(h(23), end)
+        assertEquals(h(22), end)               // 23:00 minus perna de seară
+    }
+
+    @Test
+    fun `perna de seara - nimic flexibil in ultima ora inainte de culcare`() {
+        // culcare 23:35 → lucrurile flexibile se termină până la 22:35
+        val nights = List(5) { Night(450, h(23, 35), h(7, 5)) }
+        assertEquals(h(22, 35), SleepPlanner.activeWindow(nights).second)
     }
 
     @Test

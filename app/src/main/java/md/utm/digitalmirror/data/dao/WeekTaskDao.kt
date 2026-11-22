@@ -14,6 +14,10 @@ interface WeekTaskDao {
     @Query("SELECT * FROM week_task WHERE weekStart = :weekStart ORDER BY id")
     fun observeForWeek(weekStart: String): Flow<List<WeekTask>>
 
+    /** O sarcină a săptămânii (ca o sesiune mutată să rămână în săptămâna ei și înainte de termen). */
+    @Query("SELECT * FROM week_task WHERE id = :id")
+    suspend fun get(id: Long): WeekTask?
+
     @Insert
     suspend fun insert(task: WeekTask): Long
 

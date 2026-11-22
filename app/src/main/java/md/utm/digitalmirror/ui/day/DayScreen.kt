@@ -34,6 +34,10 @@ import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.MealPlanner
+import md.utm.digitalmirror.domain.MoveSuggestions
+import md.utm.digitalmirror.domain.QuickCapture
+import md.utm.digitalmirror.ui.theme.Fraunces
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -145,6 +149,7 @@ fun DayScreen(
     var addAtMinute by remember { mutableStateOf<Int?>(null) }       // ora completată când apeși „+ Adaugă” într-un spațiu liber
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
     var postponing by remember { mutableStateOf<Activity?>(null) }   // activitatea pentru care alegem o zi
+    var moving by remember { mutableStateOf<Activity?>(null) }       // activitatea pentru care arătăm propunerile „Mută”
 
     LaunchedEffect(Unit) { vm.refreshRunning() }
 
@@ -408,7 +413,7 @@ fun DayScreen(
                         onPostponeTomorrow = {
                             vm.postponeActivity(activity, MoveTarget.of(LocalDate.parse(activity.date)).date.toString())
                         },
-                        onPostponePick = { postponing = activity },
+                        onPostponePick = { moving = activity },
                         onDelete = { vm.deleteActivity(activity) }
                     )
                 }
@@ -555,6 +560,23 @@ fun DayScreen(
     }
 
     // amânare pe o zi aleasă
+    // „Mută”: propuneri gata calculate; la capăt, alegerea liberă a zilei
+    moving?.let { activity ->
+        MoveSheet(
+            activity = activity,
+            loadSuggestions = { vm.moveSuggestions(activity) },
+            onPick = { s ->
+                vm.moveTo(activity, s.date, s.start)
+                moving = null
+            },
+            onOtherDay = {
+                moving = null
+                postponing = activity
+            },
+            onDismiss = { moving = null }
+        )
+    }
+
     postponing?.let { activity ->
         PostponeDatePicker(
             fromDate = activity.date,
@@ -698,6 +720,83 @@ private fun ActivityRow(
 }
 
 /**
+ * Foaia „Mută”: unde mai încape activitatea, gata calculat (drumuri, mese, trezire, perna de seară).
+ * Un tap pe o propunere și e mutată; la capăt, „Altă zi…” pentru alegerea liberă.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MoveSheet(
+    activity: Activity,
+    loadSuggestions: suspend () -> List<MoveSuggestions.Suggestion>,
+    onPick: (MoveSuggestions.Suggestion) -> Unit,
+    onOtherDay: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val suggestions by produceState<List<MoveSuggestions.Suggestion>?>(null, activity.id) { value = loadSuggestions() }
+    val today = LocalDate.now()
+    val minutes = activity.userEstimatedMinutes ?: activity.estimatedMinutes ?: 30
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Mută", fontFamily = Fraunces, fontWeight = FontWeight.SemiBold, fontSize = 28.sp)
+            Text(
+                "„${activity.title}” · ${formatDuration(minutes)}. Unde mai încape, cu drumuri, mese și somn:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val list = suggestions
+            when {
+                list == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                list.isEmpty() -> Text(
+                    "N-am găsit niciun loc liber până la termen. Alege tu ziua și ora.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+                else -> list.forEach { s ->
+                    Surface(
+                        onClick = { onPick(s) },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (s.note == MoveSuggestions.Note.EARLIEST) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                QuickCapture.dayLabel(s.date, today),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.width(84.dp)
+                            )
+                            Text(
+                                "${formatMinute(s.start)}–${formatMinute(s.end)}",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                when (s.note) {
+                                    MoveSuggestions.Note.EARLIEST -> "cel mai devreme"
+                                    MoveSuggestions.Note.MORNING -> "dimineața"
+                                    MoveSuggestions.Note.AFTERNOON -> "după-amiaza"
+                                    MoveSuggestions.Note.EVENING -> "seara"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+            TextButton(onClick = onOtherDay, modifier = Modifier.fillMaxWidth()) { Text("Altă zi…") }
+        }
+    }
+}
+
+/**
  * Unde merge activitatea la „mută repede”, după ziua ei:
  *  - azi → mâine (amânare);
  *  - o zi trecută, nefăcută → azi;
@@ -708,12 +807,12 @@ private data class MoveTarget(val date: LocalDate, val label: String, val pickLa
         private val DAY_NAME = java.time.format.DateTimeFormatter.ofPattern("EEEE", java.util.Locale.forLanguageTag("ro"))
 
         fun of(activityDate: LocalDate, today: LocalDate = LocalDate.now()): MoveTarget = when {
-            activityDate.isBefore(today) -> MoveTarget(today, "Mută pe azi", "Mută pe altă zi…")
-            activityDate == today -> MoveTarget(today.plusDays(1), "Amână pe mâine", "Amână pe altă zi…")
+            activityDate.isBefore(today) -> MoveTarget(today, "Mută pe azi", "Mută…")
+            activityDate == today -> MoveTarget(today.plusDays(1), "Amână pe mâine", "Mută…")
             else -> {
                 val next = activityDate.plusDays(1)
                 val name = if (next == today.plusDays(1)) "mâine" else next.format(DAY_NAME)
-                MoveTarget(next, "Mută pe $name", "Mută pe altă zi…")
+                MoveTarget(next, "Mută pe $name", "Mută…")
             }
         }
     }

@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import md.utm.digitalmirror.ui.mirror.MIRROR_TAB_CAPSULE
 import md.utm.digitalmirror.ui.mirror.MirrorScreen
+import md.utm.digitalmirror.ui.plan.CaptureScreen
 import md.utm.digitalmirror.ui.plan.PlanChoice
 import md.utm.digitalmirror.ui.plan.PlanHubSheet
 import androidx.compose.ui.platform.LocalContext
@@ -76,6 +77,7 @@ object Routes {
     const val PLACES = "places"
     const val ACTIVITY = "activity/{id}"
     const val MIRROR = "mirror"
+    const val CAPTURE = "capture"
 
     fun closing(date: String) = "closing/$date"
     fun activity(id: Long) = "activity/$id"
@@ -182,7 +184,7 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 onChoose = { choice ->
                     planHubOpen = false
                     when (choice) {
-                        PlanChoice.WRITE -> navController.navigate(Routes.PLAN)
+                        PlanChoice.WRITE -> navController.navigate(Routes.CAPTURE)
                         PlanChoice.NOW -> {
                             openTab(Routes.DAY)
                             runCatching { navController.getBackStackEntry(Routes.DAY).savedStateHandle[OPEN_ADD] = true }
@@ -268,6 +270,11 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
 
             composable(Routes.PLAN) {
                 PlanScreen(onBack = { navController.popBackStack() })
+            }
+
+            // „Ce ai de făcut?”: un singur câmp pentru tot
+            composable(Routes.CAPTURE) {
+                CaptureScreen(onBack = { navController.popBackStack() })
             }
 
             // Săptămâna e acum un tab: fără „Înapoi”

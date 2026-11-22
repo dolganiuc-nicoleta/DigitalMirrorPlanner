@@ -24,6 +24,7 @@ import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.DaySkeleton
 import md.utm.digitalmirror.domain.MealPlanner
+import md.utm.digitalmirror.domain.MoveSuggestions
 import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.data.travel.DayBusy
 import md.utm.digitalmirror.data.travel.TravelMatrix
@@ -364,6 +365,71 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
 
             SleepUi(today, first, tomorrow, nextFirst)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    }
+
+    // ---- „Mută”: unde mai încape o activitate ----
+
+    /**
+     * Propuneri gata calculate pentru a muta o activitate: din azi (sau din ziua ei, dacă e viitoare și mai
+     * devreme nu se poate) până la limita ei: ajunul evenimentului pentru o sesiune de pregătire, termenul sau
+     * duminica pentru o sesiune din planul săptămânii, altfel o săptămână. Țin cont de tot: celelalte lucruri
+     * din zi, drumuri, mese, trezire și perna de seară.
+     */
+    suspend fun moveSuggestions(activity: Activity): List<MoveSuggestions.Suggestion> {
+        val today = LocalDate.now()
+        val minutes = activity.userEstimatedMinutes ?: activity.estimatedMinutes ?: 30
+
+        val db = AppDatabase.get(app)
+        val last: LocalDate = when {
+            activity.prepStepId != null ->
+                db.prepDao().eventDateForStep(activity.prepStepId)?.let { LocalDate.parse(it).minusDays(1) } ?: today.plusDays(6)
+            activity.weekTaskId != null -> db.weekTaskDao().get(activity.weekTaskId)?.let { task ->
+                task.deadline?.let(LocalDate::parse) ?: LocalDate.parse(task.weekStart).plusDays(6)
+            } ?: today.plusDays(6)
+            else -> today.plusDays(6)
+        }
+
+        val place = activity.placeId ?: homePlaceId
+        val rules = DayBusy.rules(app)
+        val daysOff = availabilityDao.observeDaysOff().first().map { it.date }.toSet()
+        val links = DayBusy.calendarPlaces(app)
+        val nowMinute = java.time.LocalTime.now().let { it.hour * 60 + it.minute + 10 }
+
+        val dates = generateSequence(today) { it.plusDays(1) }.takeWhile { !it.isAfter(last) }
+            .filter { it.toString() !in daysOff }.toList()
+        val days = dates.map { date ->
+                val others = repo.observeActivitiesForDate(date.toString()).first().filter { it.id != activity.id }
+                val busy = DayBusy.activities(others) + DayBusy.calendar(app, date, links) + DayBusy.blocks(date, rules, daysOff)
+                val meals = skeletonMatrix.skeleton(busy, date).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
+                val travel = skeletonMatrix.forPlanning(listOfNotNull(place), busy.mapNotNull { it.placeId })
+                val (start, end) = DayBusy.window(app, date)
+                MoveSuggestions.Day(
+                    date = date,
+                    busy = TravelGaps.expand(busy, place, travel) + meals,
+                    from = if (date == today) maxOf(start, nowMinute) else start,
+                    to = end
+                )
+            }
+
+        return MoveSuggestions.suggest(minutes, days, current = LocalDate.parse(activity.date) to activity.plannedStartMinute)
+    }
+
+    /**
+     * Mută activitatea la ziua și ora alese. E amânare doar dacă ziua ei a venit și o muți mai încolo;
+     * mutarea unei activități viitoare, sau mai devreme, e doar replanificare.
+     */
+    fun moveTo(activity: Activity, date: LocalDate, start: Int) = viewModelScope.launch {
+        val fresh = repo.getActivity(activity.id) ?: return@launch
+        val today = LocalDate.now()
+        val from = LocalDate.parse(fresh.date)
+        if (date != from) {
+            val due = !from.isAfter(today) && date.isAfter(from)
+            repo.postponeActivity(fresh.id, date.toString(), countAsPostponed = due)
+        }
+        val moved = (repo.getActivity(fresh.id) ?: return@launch).copy(plannedStartMinute = start)
+        repo.updateActivity(moved)
+        ActivityReminders.onActivityClosed(app, moved.id)
+        ActivityReminders.onActivityPlanned(app, moved)
     }
 
     // ---- confirmarea somnului, dimineața ----
