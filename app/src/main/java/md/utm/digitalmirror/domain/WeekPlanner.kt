@@ -32,6 +32,7 @@ object WeekPlanner {
     private const val MAX_RATE = 0.95
     private const val DAY_START = 8 * 60
     private const val DAY_END = 22 * 60
+    const val SESSION_BREAK = 15                // pauza dintre două sesiuni puse de planificator
     private const val MIN_SESSION = 20          // o rămășiță mai mică se lipește de sesiunea dinainte
     private const val OVERLOADED = 1.15
     private const val TIGHT = 0.85
@@ -172,6 +173,8 @@ object WeekPlanner {
                     val (start, end) = best.slot
                     sessions += Session(task.id, task.title, best.day.date, start, end, task.pinnedDate != null)
                     occupied.getValue(best.day.date) += Busy(start, end, task.placeId)
+                    // o pauză între sesiunile puse de noi: nu lipim 3 ore de lucru fără oprire
+                    occupied.getValue(best.day.date) += Busy(start - SESSION_BREAK, end + SESSION_BREAK)
                     added[best.day.date] = added.getValue(best.day.date) + size
                     perTaskDay.merge(task.id to best.day.date, 1, Int::plus)
                 }

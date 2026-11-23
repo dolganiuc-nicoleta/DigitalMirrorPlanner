@@ -20,5 +20,7 @@ data class TimeCapsule(
     val videoFile: String?,            // numele fișierului din filesDir/capsules
     val openWhenSlowing: Boolean,      // permite aplicației să întrebe dacă o deschizi mai devreme
     val lastNudgeDate: String?,        // ultima dată când i-am amintit de capsulă
-    val readyNotified: Boolean         // true după notificarea „se poate deschide”
+    val readyNotified: Boolean,        // true după notificarea „se poate deschide”
+    // v20 · cât de bine îți estimai timpul la sigilare (CapsuleBets.estimateError); null = prea puține date
+    val estimateErrorAtStart: Int? = null
 )

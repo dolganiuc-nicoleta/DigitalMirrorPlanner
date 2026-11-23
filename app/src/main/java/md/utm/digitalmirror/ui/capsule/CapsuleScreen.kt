@@ -27,6 +27,18 @@ import md.utm.digitalmirror.data.capsule.RecordVideo
 import md.utm.digitalmirror.data.dao.PeriodStats
 import md.utm.digitalmirror.data.entity.Goal
 import md.utm.digitalmirror.domain.CapsuleLogic
+import md.utm.digitalmirror.domain.CapsuleBets
+import md.utm.digitalmirror.data.entity.Category
+import md.utm.digitalmirror.ui.theme.Fraunces
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import md.utm.digitalmirror.ui.components.formatDuration
 import java.io.File
 import java.time.Instant
@@ -40,6 +52,7 @@ import java.util.Locale
 fun CapsuleScreen(vm: CapsuleViewModel = viewModel()) {
     val cards by vm.cards.collectAsState()
     val goals by vm.activeGoals.collectAsState()
+    val categories by vm.categories.collectAsState()
 
     var creating by rememberSaveable { mutableStateOf(false) }
     var opening by remember { mutableStateOf<CapsuleViewModel.CapsuleCard?>(null) }
@@ -70,9 +83,11 @@ fun CapsuleScreen(vm: CapsuleViewModel = viewModel()) {
                     CapsuleCardView(
                         card = card,
                         vm = vm,
+                        categories = categories,
                         onOpen = { opening = card },
                         onDelete = { deleting = card },
-                        onWatch = { watching = it }
+                        onWatch = { watching = it },
+                        onSealNext = { creating = true }
                     )
                 }
             }
@@ -82,9 +97,11 @@ fun CapsuleScreen(vm: CapsuleViewModel = viewModel()) {
     if (creating) {
         CapsuleDialog(
             goals = goals,
+            categories = categories,
+            loadSuggestions = { vm.suggestions(it) },
             onDismiss = { creating = false },
-            onSave = { title, message, expectations, date, goalIds, video, slowing ->
-                vm.create(title, message, expectations, date, goalIds, video, slowing)
+            onSave = { title, message, expectations, date, goalIds, video, slowing, bets ->
+                vm.create(title, message, expectations, date, goalIds, video, slowing, bets)
                 creating = false
             }
         )
@@ -128,9 +145,11 @@ fun CapsuleScreen(vm: CapsuleViewModel = viewModel()) {
 private fun CapsuleCardView(
     card: CapsuleViewModel.CapsuleCard,
     vm: CapsuleViewModel,
+    categories: List<Category>,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
-    onWatch: (File) -> Unit
+    onWatch: (File) -> Unit,
+    onSealNext: () -> Unit
 ) {
     val context = LocalContext.current
     val capsule = card.capsule
@@ -190,7 +209,7 @@ private fun CapsuleCardView(
                     }
                 }
 
-                CapsuleLogic.State.OPENED -> OpenedContent(card, vm, video, onWatch, onDelete)
+                CapsuleLogic.State.OPENED -> OpenedContent(card, vm, categories, video, onWatch, onDelete, onSealNext)
             }
         }
     }
@@ -200,15 +219,21 @@ private fun CapsuleCardView(
 private fun OpenedContent(
     card: CapsuleViewModel.CapsuleCard,
     vm: CapsuleViewModel,
+    categories: List<Category>,
     video: File?,
     onWatch: (File) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onSealNext: () -> Unit
 ) {
     val capsule = card.capsule
     val end = card.openedOn ?: LocalDate.now()
     val start = LocalDate.parse(capsule.startDate)
     var stats by remember(capsule.id) { mutableStateOf<PeriodStats?>(null) }
-    LaunchedEffect(capsule.id, card.openedOn) { stats = vm.periodStats(card) }
+    var report by remember(capsule.id) { mutableStateOf<CapsuleViewModel.BetReport?>(null) }
+    LaunchedEffect(capsule.id, card.openedOn) {
+        stats = vm.periodStats(card)
+        report = vm.betReport(card)
+    }
 
     Text(
         "Scrisă pe ${formatDate(capsule.startDate)} · deschisă pe ${end.format(dateFormatter)}",
@@ -234,6 +259,15 @@ private fun OpenedContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+
+    // pariurile tale vs ce a fost, și cât de bine îți estimezi timpul acum față de atunci
+    report?.let { r ->
+        if (r.results.isNotEmpty()) {
+            SectionTitle("Ce ai crezut vs ce a fost")
+            r.results.forEach { BetBars(it, categories) }
+        }
+        EstimateChange(r.errorAtStart, r.errorNow)
     }
 
     SectionTitle("Ce s-a întâmplat")
@@ -264,10 +298,127 @@ private fun OpenedContent(
         )
     }
 
-    Row {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // cercul se închide: o capsulă nouă, cu ținte propuse din ritmul tău real
+        Button(onClick = onSealNext) { Text("Sigilează capsula următoare") }
         Spacer(Modifier.weight(1f))
         TextButton(onClick = onDelete) { Text("Șterge") }
     }
+}
+
+/** Un pariu: bara punctată = ce ai crezut, bara plină = ce a fost. */
+@Composable
+private fun BetBars(r: CapsuleBets.Result, categories: List<Category>) {
+    val bet = r.bet
+    val title = when (bet.kind) {
+        CapsuleBets.Kind.HOURS -> "Ore la ${categories.find { it.id == bet.categoryId }?.name ?: "categoria aleasă"}"
+        CapsuleBets.Kind.SLEEP -> "Somn, în medie"
+        CapsuleBets.Kind.COMPLETION -> "Activități terminate"
+    }
+    fun value(v: Int) = if (bet.kind == CapsuleBets.Kind.COMPLETION) "$v%" else formatDuration(v)
+    val verdict = when (r.verdict) {
+        null -> "prea puține date"
+        CapsuleBets.Verdict.NEAR -> "aproape"
+        CapsuleBets.Verdict.BELOW -> "cu ${value(-(r.difference ?: 0))} mai puțin"
+        CapsuleBets.Verdict.ABOVE -> "cu ${value(r.difference ?: 0)} mai mult"
+    }
+    val top = maxOf(bet.predicted, r.actual ?: 0).coerceAtLeast(1).toFloat()
+    val accent = MaterialTheme.colorScheme.primary
+
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(
+                verdict,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (r.verdict == CapsuleBets.Verdict.NEAR) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        BarRow("ai crezut", value(bet.predicted), bet.predicted / top, accent, dashed = true)
+        BarRow("a fost", r.actual?.let { value(it) } ?: "–", (r.actual ?: 0) / top, accent, dashed = false)
+    }
+}
+
+@Composable
+private fun BarRow(label: String, value: String, fraction: Float, color: androidx.compose.ui.graphics.Color, dashed: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(60.dp))
+        Box(
+            Modifier
+                .weight(1f)
+                .height(12.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                    .then(
+                        if (dashed) Modifier.drawBehind {
+                            drawRoundRect(
+                                color = color,
+                                cornerRadius = CornerRadius(6.dp.toPx()),
+                                style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx())))
+                            )
+                        } else Modifier.clip(RoundedCornerShape(6.dp)).background(color)
+                    )
+            )
+        }
+        Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(52.dp))
+    }
+}
+
+/** „Ce s-a schimbat în tine”: cât de bine îți estimai timpul la sigilare și acum. */
+@Composable
+private fun EstimateChange(atStart: Int?, now: Int?) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "CE S-A SCHIMBAT ÎN TINE",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            if (atStart == null || now == null) {
+                Text(
+                    "Cât de bine îți estimezi timpul: încă nu am destule activități măsurate (cu cronometrul sau corectate) " +
+                            "ca să compar atunci cu acum.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            } else {
+                Text(
+                    "${kotlin.math.abs(atStart)}% → ${kotlin.math.abs(now)}%",
+                    fontFamily = Fraunces,
+                    fontSize = 34.sp,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    estimateSentence(atStart, now),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
+
+private fun estimateSentence(atStart: Int, now: Int): String {
+    fun phrase(e: Int) = when {
+        e > 0 -> "îți lua cu $e% mai mult decât credeai"
+        e < 0 -> "îți lua cu ${-e}% mai puțin decât credeai"
+        else -> "îți lua exact cât credeai"
+    }
+    val better = kotlin.math.abs(now) < kotlin.math.abs(atStart)
+    return "La sigilare, o activitate ${phrase(atStart)}. Acum ${phrase(now).replace("îți lua", "îți ia")}." +
+            if (better) " Te cunoști mai bine." else ""
 }
 
 @Composable
@@ -302,11 +453,23 @@ private fun VideoDialog(file: File, onDismiss: () -> Unit) {
 @Composable
 private fun CapsuleDialog(
     goals: List<Goal>,
+    categories: List<Category>,
+    loadSuggestions: suspend (LocalDate) -> CapsuleViewModel.Suggestions,
     onDismiss: () -> Unit,
-    onSave: (String, String, String, LocalDate, Set<Long>, String?, Boolean) -> Unit
+    onSave: (String, String, String, LocalDate, Set<Long>, String?, Boolean, List<CapsuleBets.Bet>) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // pariurile: propuse din ultima lună la alegerea datei; utilizatorul doar le ajustează
+    var hoursOn by rememberSaveable { mutableStateOf(true) }
+    var hoursCategory by rememberSaveable { mutableStateOf<Long?>(null) }
+    var hours by rememberSaveable { mutableIntStateOf(10 * 60) }
+    var sleepOn by rememberSaveable { mutableStateOf(true) }
+    var sleep by rememberSaveable { mutableIntStateOf(7 * 60 + 30) }
+    var doneOn by rememberSaveable { mutableStateOf(true) }
+    var done by rememberSaveable { mutableIntStateOf(75) }
+    var suggestedFor by rememberSaveable { mutableStateOf<String?>(null) }
 
     // rememberSaveable: aplicația de cameră poate închide aplicația noastră cât filmezi
     var title by rememberSaveable { mutableStateOf("") }
@@ -348,6 +511,18 @@ private fun CapsuleDialog(
 
     val date = unlockDate?.let { LocalDate.parse(it) }
     val valid = title.isNotBlank() && message.isNotBlank() && date != null
+
+    // la alegerea (sau schimbarea) datei: propunerile din ritmul tău real
+    LaunchedEffect(unlockDate) {
+        val d = unlockDate ?: return@LaunchedEffect
+        if (suggestedFor == d) return@LaunchedEffect
+        val sug = loadSuggestions(LocalDate.parse(d))
+        hoursCategory = hoursCategory ?: sug.categoryId ?: categories.firstOrNull()?.id
+        hours = sug.hoursMinutes
+        sleep = sug.sleepMinutes
+        done = sug.completion
+        suggestedFor = d
+    }
 
     fun dismiss() {
         discardVideo()
@@ -407,6 +582,48 @@ private fun CapsuleDialog(
                     }
                 }
 
+                // pariurile cu tine: ce prezici pentru perioada asta (le compari la deschidere)
+                Text("Pariurile tale", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    if (unlockDate == null) "Alege întâi data deschiderii; îți propun apoi valori din ultima lună."
+                    else "Propuse din ultima ta lună. Schimbă-le cum crezi că va fi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (categories.isNotEmpty()) {
+                    BetStepper(
+                        title = "Ore la " + (categories.find { it.id == hoursCategory }?.name ?: "o categorie"),
+                        value = formatDuration(hours),
+                        enabled = hoursOn,
+                        onEnabled = { hoursOn = it },
+                        onMinus = { hours = (hours - 60).coerceAtLeast(60) },
+                        onPlus = { hours = (hours + 60).coerceAtMost(300 * 60) }
+                    )
+                    if (hoursOn) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            categories.forEach { c ->
+                                FilterChip(selected = c.id == hoursCategory, onClick = { hoursCategory = c.id }, label = { Text(c.name) })
+                            }
+                        }
+                    }
+                }
+                BetStepper(
+                    title = "Somn, în medie",
+                    value = formatDuration(sleep),
+                    enabled = sleepOn,
+                    onEnabled = { sleepOn = it },
+                    onMinus = { sleep = (sleep - 15).coerceAtLeast(4 * 60) },
+                    onPlus = { sleep = (sleep + 15).coerceAtMost(11 * 60) }
+                )
+                BetStepper(
+                    title = "Cât din plan termini",
+                    value = "$done%",
+                    enabled = doneOn,
+                    onEnabled = { doneOn = it },
+                    onMinus = { done = (done - 5).coerceAtLeast(10) },
+                    onPlus = { done = (done + 5).coerceAtMost(100) }
+                )
+
                 Text("Obiective legate (opțional)", style = MaterialTheme.typography.labelLarge)
                 if (goals.isEmpty()) {
                     Text(
@@ -452,7 +669,12 @@ private fun CapsuleDialog(
                     // videoul a fost salvat în capsulă, deci nu-l mai ștergem
                     val video = videoFile
                     videoFile = null
-                    onSave(title, message, expectations, date!!, selected, video, slowing)
+                    val bets = buildList {
+                        if (hoursOn && hoursCategory != null) add(CapsuleBets.Bet(CapsuleBets.Kind.HOURS, hours, hoursCategory))
+                        if (sleepOn) add(CapsuleBets.Bet(CapsuleBets.Kind.SLEEP, sleep))
+                        if (doneOn) add(CapsuleBets.Bet(CapsuleBets.Kind.COMPLETION, done))
+                    }
+                    onSave(title, message, expectations, date!!, selected, video, slowing, bets)
                 }
             ) { Text("Sigilează") }
         },
@@ -464,6 +686,27 @@ private fun CapsuleDialog(
             onDismiss = { pickingDate = false },
             onConfirm = { unlockDate = it; pickingDate = false }
         )
+    }
+}
+
+/** Un pariu la sigilare: bifa, valoarea și − / +. */
+@Composable
+private fun BetStepper(
+    title: String,
+    value: String,
+    enabled: Boolean,
+    onEnabled: (Boolean) -> Unit,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = enabled, onCheckedChange = onEnabled)
+        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        if (enabled) {
+            FilledTonalIconButton(onClick = onMinus, modifier = Modifier.size(36.dp)) { Text("−") }
+            Text(value, style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(min = 56.dp), textAlign = TextAlign.Center)
+            FilledTonalIconButton(onClick = onPlus, modifier = Modifier.size(36.dp)) { Text("+") }
+        }
     }
 }
 

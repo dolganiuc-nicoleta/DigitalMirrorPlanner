@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
+import md.utm.digitalmirror.data.entity.CapsuleBet
 import md.utm.digitalmirror.data.entity.CapsuleGoal
 import md.utm.digitalmirror.data.entity.TimeCapsule
 
@@ -37,6 +38,17 @@ interface CapsuleDao {
 
     @Query("DELETE FROM capsule_goal WHERE capsuleId = :capsuleId")
     suspend fun deleteLinks(capsuleId: Long)
+
+    // ---- pariurile ----
+
+    @Query("SELECT * FROM capsule_bet")
+    fun observeBets(): Flow<List<CapsuleBet>>
+
+    @Insert
+    suspend fun insertBets(bets: List<CapsuleBet>)
+
+    @Query("DELETE FROM capsule_bet WHERE capsuleId = :capsuleId")
+    suspend fun deleteBets(capsuleId: Long)
 
     // actualizări țintite, ca să nu suprascriem alte câmpuri
     @Query("UPDATE time_capsule SET openedAt = :openedAt WHERE id = :id")

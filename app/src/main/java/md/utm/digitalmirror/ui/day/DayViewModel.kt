@@ -310,12 +310,15 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             // azi: mesele cu fereastra deja trecută nu mai contează, iar celelalte se pun de acum încolo
             var windows = DayBusy.meals(app, LocalDate.parse(date))
             var mealBusy = busy
+            var now: Int? = null
             if (LocalDate.parse(date) == LocalDate.now()) {
-                val now = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+                now = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
                 windows = windows.filter { it.to - it.minutes > now }
                 mealBusy = busy + SlotRecommender.Busy(0, now)
             }
-            val meals = DaySkeleton.build(mealBusy, home, travel, TravelPrefs.prepMinutes(app), windows).meals
+            val placedMeals = DaySkeleton.build(mealBusy, home, travel, TravelPrefs.prepMinutes(app), windows).meals
+            // „n-ai pauză de prânz” doar dacă fereastra n-a început: altfel poate ai mâncat deja
+            val meals = now?.let { n -> placedMeals.copy(missing = placedMeals.missing.filter { it.from > n }) } ?: placedMeals
             val result = DaySkeleton.build(busy, home, travel, TravelPrefs.prepMinutes(app), emptyList()).copy(meals = meals)
             result.copy(legs = result.legs.filter { leg -> manual.none { (s, e) -> s < leg.end && leg.prepStart < e } })
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)

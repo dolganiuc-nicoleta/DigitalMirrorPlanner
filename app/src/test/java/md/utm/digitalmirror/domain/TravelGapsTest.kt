@@ -142,6 +142,21 @@ class TravelGapsTest {
     }
 
     @Test
+    fun `doua sesiuni in aceeasi zi au o pauza intre ele`() {
+        val day = java.time.LocalDate.of(2026, 11, 23)
+        val plan = WeekPlanner.plan(
+            tasks = listOf(
+                WeekPlanner.Task(1, "Învăț materia", 90, 90, deadline = day),
+                WeekPlanner.Task(2, "Exerciții", 90, 90, deadline = day)
+            ),
+            days = listOf(WeekPlanner.DayInput(day, emptyList(), dayStart = h(9, 30), dayEnd = h(22))),
+            today = null
+        )
+        val (first, second) = plan.sessions.sortedBy { it.startMinute }
+        assertTrue(second.startMinute - first.endMinute >= WeekPlanner.SESSION_BREAK)
+    }
+
+    @Test
     fun `perechile necesare includ ambele sensuri`() {
         val pairs = TravelGaps.pairsNeeded(listOf(GYM), listOf(UNI))
         assertEquals(setOf(GYM to UNI, UNI to GYM), pairs)
