@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">DigitalMirrorPlanner</string>
+    <string name="widget_name">Ziua ta</string>
+    <string name="widget_description">Ce contează acum, ce urmează și cronometrul, fără să deschizi aplicația.</string>
 </resources>

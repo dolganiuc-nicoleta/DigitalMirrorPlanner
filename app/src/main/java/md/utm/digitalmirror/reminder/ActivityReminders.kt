@@ -17,6 +17,7 @@ import md.utm.digitalmirror.MainActivity
 import md.utm.digitalmirror.data.db.AppDatabase
 import md.utm.digitalmirror.data.entity.Activity
 import md.utm.digitalmirror.data.repository.PlannerRepository
+import md.utm.digitalmirror.ui.widget.WidgetUpdater
 import md.utm.digitalmirror.ui.components.formatDuration
 import java.time.LocalDate
 import java.time.LocalTime
@@ -71,6 +72,7 @@ object ActivityReminders {
 
     /** Activitate nouă, editată sau amânată: (re)programăm alarma de început. */
     fun onActivityPlanned(context: Context, activity: Activity) {
+        WidgetUpdater.refresh(context)
         cancelAlarm(context, activity.id, ACTION_ALARM_START)
         startTimeMillis(activity)?.let { at ->
             if (activity.state == "PLANNED" && at > System.currentTimeMillis()) {
@@ -81,6 +83,7 @@ object ActivityReminders {
 
     /** Cronometrul a pornit: afișăm notificarea cu cronometru și programăm „Ai terminat?”. */
     fun onTimerStarted(context: Context, activity: Activity, startedAt: Long, closedMillis: Long) {
+        WidgetUpdater.refresh(context)
         cancelAlarm(context, activity.id, ACTION_ALARM_START)
         showRunning(context, activity, chronometerBase = startedAt - closedMillis)
 
@@ -96,12 +99,14 @@ object ActivityReminders {
 
     /** Cronometrul s-a oprit (pauză): scoatem notificarea și alarma de sfârșit. */
     fun onTimerStopped(context: Context, activityId: Long) {
+        WidgetUpdater.refresh(context)
         cancelAlarm(context, activityId, ACTION_ALARM_END)
         cancelNotification(context, activityId)
     }
 
     /** Activitate finalizată, abandonată sau ștearsă: nu mai trebuie nicio notificare. */
     fun onActivityClosed(context: Context, activityId: Long) {
+        WidgetUpdater.refresh(context)
         cancelAlarm(context, activityId, ACTION_ALARM_START)
         cancelAlarm(context, activityId, ACTION_ALARM_END)
         cancelNotification(context, activityId)

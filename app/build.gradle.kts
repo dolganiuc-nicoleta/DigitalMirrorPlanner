@@ -69,6 +69,8 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.health.connect:connect-client:1.1.0")
+    // widgetul de pe ecranul principal, scris în stil Compose
+    implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.kotlinx.coroutines.play.services)
