@@ -266,8 +266,8 @@ fun SelectedDayHeader(
                 dayOff -> "Zi liberă"
                 cell == null || cell.minutes == 0 -> null
                 cell.budget <= 0 -> "Planificat ${formatDuration(cell.minutes)}"
-                cell.minutes > cell.budget * 1.15 -> "Planificat ${formatDuration(cell.minutes)}, peste cât reușești de obicei (${formatDuration(cell.budget)})"
-                else -> "Planificat ${formatDuration(cell.minutes)} din ~${formatDuration(cell.budget)} cât reușești de obicei"
+                cell.minutes > cell.budget * 1.15 -> "${formatDuration(cell.minutes)} planificat · peste obișnuitul tău (~${formatDuration(cell.budget)})"
+                else -> "${formatDuration(cell.minutes)} planificat din ~${formatDuration(cell.budget)} obișnuite"
             }
             load?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
