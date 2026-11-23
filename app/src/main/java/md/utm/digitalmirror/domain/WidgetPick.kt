@@ -25,7 +25,7 @@ object WidgetPick {
             ?: open.firstOrNull { it.start == null }
     }
 
-    /** Următoarele [count] lucruri care nu s-au terminat încă, în ordine. */
+    /** Următoarele [count] lucruri care n-au început încă (ce e în desfășurare apare deja sus, la „acum”). */
     fun upcoming(lines: List<Line>, now: Int, count: Int = 3): List<Line> =
-        lines.filter { it.end > now }.sortedBy { it.start }.take(count)
+        lines.filter { it.start > now }.sortedBy { it.start }.take(count)
 }

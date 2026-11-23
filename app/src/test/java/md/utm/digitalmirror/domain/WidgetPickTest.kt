@@ -38,7 +38,13 @@ class WidgetPickTest {
     }
 
     @Test
-    fun `urmeaza - doar ce nu s-a terminat, in ordine, cel mult trei`() {
+    fun `ce e in desfasurare nu apare si in urmeaza`() {
+        val lines = listOf(Line(h(13, 30), h(15), "cPECPIT"), Line(h(15, 15), h(16, 45), "C.ASCS"))
+        assertEquals(listOf("C.ASCS"), WidgetPick.upcoming(lines, h(14, 18)).map { it.title })
+    }
+
+    @Test
+    fun `urmeaza - doar ce n-a inceput, in ordine, cel mult trei`() {
         val lines = listOf(
             Line(h(15, 15), h(16, 45), "C.PSI"),
             Line(h(10), h(11), "Dimineața"),

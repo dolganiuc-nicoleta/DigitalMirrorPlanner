@@ -7,6 +7,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.LocalSize
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
@@ -64,6 +66,9 @@ private val Muted = Color(0xFF5A4A38)
  * din zi și un buton care pornește sau oprește cronometrul, fără să deschizi aplicația.
  */
 class DayWidget : GlanceAppWidget() {
+
+    // mărimea reală a widgetului, ca să ne potrivim când e mic (butonul trebuie să încapă mereu)
+    override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val state = runCatching { DayWidgetData.load(context) }.getOrNull()
@@ -189,12 +194,15 @@ object DayWidgetData {
 
 @Composable
 private fun WidgetContent(state: WidgetState?) {
+    // mic (4×2): 2 rânduri și spații strânse; mare: 3 rânduri
+    val compact = LocalSize.current.height < 200.dp
+    val maxLines = if (compact) 2 else 3
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(Paper)
             .cornerRadius(24.dp)
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = if (compact) 10.dp else 16.dp)
             .clickable(actionStartActivity<MainActivity>())
     ) {
         if (state == null) {
@@ -203,7 +211,7 @@ private fun WidgetContent(state: WidgetState?) {
         }
 
         Text(state.dateLabel, style = TextStyle(color = ColorProvider(Muted), fontSize = 12.sp, fontWeight = FontWeight.Medium))
-        Spacer(GlanceModifier.height(6.dp))
+        Spacer(GlanceModifier.height(if (compact) 2.dp else 6.dp))
         Text(
             state.focus.label.uppercase(),
             style = TextStyle(color = ColorProvider(Muted), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -211,15 +219,15 @@ private fun WidgetContent(state: WidgetState?) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 DayArc.duration(state.focus.minutes),
-                style = TextStyle(color = ColorProvider(Ink), fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                style = TextStyle(color = ColorProvider(Ink), fontSize = if (compact) 24.sp else 28.sp, fontWeight = FontWeight.Bold)
             )
             Spacer(GlanceModifier.width(10.dp))
-            Text(state.focus.sentence, style = TextStyle(color = ColorProvider(Ink), fontSize = 13.sp), maxLines = 2)
+            Text(state.focus.sentence, style = TextStyle(color = ColorProvider(Ink), fontSize = 13.sp), maxLines = if (compact) 1 else 2)
         }
 
         if (state.lines.isNotEmpty()) {
-            Spacer(GlanceModifier.height(8.dp))
-            state.lines.forEach { line ->
+            Spacer(GlanceModifier.height(if (compact) 4.dp else 8.dp))
+            state.lines.take(maxLines).forEach { line ->
                 Row(GlanceModifier.fillMaxWidth().padding(vertical = 2.dp)) {
                     Text(
                         DayArc.clock(line.start),
@@ -235,13 +243,14 @@ private fun WidgetContent(state: WidgetState?) {
         val id = state.timerId
         val title = state.timerTitle
         if (id != null && title != null) {
-            Spacer(GlanceModifier.height(10.dp))
+            // tot spațiul rămas deasupra butonului, ca butonul să stea mereu jos și întreg
+            Spacer(GlanceModifier.defaultWeight())
             Row(
                 modifier = GlanceModifier
                     .fillMaxWidth()
                     .background(Ink)
                     .cornerRadius(20.dp)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .padding(horizontal = 14.dp, vertical = if (compact) 7.dp else 10.dp)
                     .clickable(actionRunCallback<ToggleTimerAction>(actionParametersOf(ToggleTimerAction.TARGET to id))),
                 verticalAlignment = Alignment.CenterVertically
             ) {
