@@ -194,7 +194,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         repo.observeCategories(),
         state.map { it.sessions }.distinctUntilChanged()
     ) { (date, activities), rules, daysOffList, categories, sessions ->
-        val colors = categories.associate { it.id to it.colorHex }
+        val colors = categories.associate { it.id to md.utm.digitalmirror.ui.components.CategoryColor.hex(it) }
         val daysOff = daysOffList.map { it.date }.toSet()
         val items = mutableListOf<AgendaItem>()
         activities.filter { it.state != "POSTPONED" && it.state != "ABANDONED" }.forEach { a ->
@@ -235,7 +235,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
             repo.observeActivitiesInRange(m.atDay(1).toString(), m.atEndOfMonth().toString()),
             repo.observeCategories()
         ) { activities, categories ->
-            val colors = categories.associate { it.id to it.colorHex }
+            val colors = categories.associate { it.id to md.utm.digitalmirror.ui.components.CategoryColor.hex(it) }
             activities.filter { it.state != "POSTPONED" && it.state != "ABANDONED" }
                 .groupBy { LocalDate.parse(it.date) }
                 .mapValues { (_, list) -> list.map { a -> a.categoryId?.let(colors::get) }.distinct().take(3) }

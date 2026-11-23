@@ -40,6 +40,7 @@ import md.utm.digitalmirror.domain.CardMirror
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -1682,7 +1683,7 @@ private fun ActivityDialog(
                             onClick = { selectedCategory = if (selectedCategory?.id == c.id) null else c },
                             label = { Text(c.name) },
                             leadingIcon = {
-                                Box(Modifier.size(10.dp).clip(CircleShape).background(categoryColor(c.colorHex)))
+                                Box(Modifier.size(10.dp).clip(CircleShape).background(categoryColor(md.utm.digitalmirror.ui.components.CategoryColor.hex(c))))
                             }
                         )
                     }
@@ -1768,7 +1769,8 @@ private fun ActivityDialog(
                         guessMinutes = guessMinutes,
                         categoryName = selectedCategory?.name,
                         onUseEstimate = { plannedMinutes = e.minutes },
-                        onKeepGuess = { guessMinutes?.let { plannedMinutes = it } }
+                        onKeepGuess = { guessMinutes?.let { plannedMinutes = it } },
+                        planned = plannedMinutes
                     )
                 }
 
@@ -1893,7 +1895,8 @@ private fun EstimateCard(
     guessMinutes: Int?,
     categoryName: String?,
     onUseEstimate: () -> Unit,
-    onKeepGuess: () -> Unit
+    onKeepGuess: () -> Unit,
+    planned: Int? = null          // durata aleasă acum: butonul potrivit apare ales
 ) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -1915,15 +1918,14 @@ private fun EstimateCard(
                 if (guessMinutes != null && guessMinutes != estimate.minutes) {
                     // fără istoric, propunerea vine doar din tiparul zilei ales la configurare
                     Text(
-                        "De obicei oamenii își subestimează activitățile, iar din tiparul tău de zi " +
-                                "pornesc de la ~${formatDuration(estimate.minutes)}. După câteva activități finalizate, " +
-                                "propunerile vor veni din istoricul tău.",
+                        "Oamenii își subestimează de obicei activitățile; din tiparul tău de zi aș porni de la " +
+                                "~${formatDuration(estimate.minutes)}.",
                         style = MaterialTheme.typography.bodySmall,
                         color = color
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = onUseEstimate) { Text("Folosește ~${formatDuration(estimate.minutes)}") }
-                        TextButton(onClick = onKeepGuess) { Text("Păstrez ${formatDuration(guessMinutes)}") }
+                        PickButton(planned == estimate.minutes, onUseEstimate, "Folosește ~${formatDuration(estimate.minutes)}")
+                        PickButton(planned == guessMinutes, onKeepGuess, "Păstrez ${formatDuration(guessMinutes)}")
                     }
                 } else {
                     Text(
@@ -1973,11 +1975,11 @@ private fun EstimateCard(
 
             if (guessMinutes != null && guessMinutes != estimate.minutes) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onUseEstimate) { Text("Folosește ~${formatDuration(estimate.minutes)}") }
-                    TextButton(onClick = onKeepGuess) { Text("Păstrez ${formatDuration(guessMinutes)}") }
+                    PickButton(planned == estimate.minutes, onUseEstimate, "Folosește ~${formatDuration(estimate.minutes)}")
+                    PickButton(planned == guessMinutes, onKeepGuess, "Păstrez ${formatDuration(guessMinutes)}")
                 }
             } else if (guessMinutes == null) {
-                TextButton(onClick = onUseEstimate) { Text("Folosește ~${formatDuration(estimate.minutes)}") }
+                PickButton(planned == estimate.minutes, onUseEstimate, "Folosește ~${formatDuration(estimate.minutes)}")
             }
         }
     }
@@ -2250,5 +2252,19 @@ private fun DurationPicker(minutes: Int?, onChange: (Int?) -> Unit) {
                 )
             }
         }
+    }
+}
+
+/** Un buton dintr-o alegere: cel ales e plin, celălalt doar cu text. */
+@Composable
+private fun PickButton(selected: Boolean, onClick: () -> Unit, label: String) {
+    if (selected) {
+        FilledTonalButton(onClick = onClick) {
+            Icon(androidx.compose.material.icons.Icons.Outlined.Check, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label)
+        }
+    } else {
+        TextButton(onClick = onClick) { Text(label) }
     }
 }
