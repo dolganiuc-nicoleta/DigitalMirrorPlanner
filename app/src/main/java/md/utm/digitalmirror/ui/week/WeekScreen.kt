@@ -23,7 +23,43 @@ import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.WeekPlanner
 import md.utm.digitalmirror.domain.WeekTaskParser
 import md.utm.digitalmirror.ui.components.formatDuration
+import md.utm.digitalmirror.ui.theme.Fraunces
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import java.time.LocalDate
+
+/** Un card cu titlu care se deschide la apăsare; ține ecranul curat. */
+@Composable
+private fun Collapsible(
+    title: String,
+    subtitle: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall)
+                    if (!expanded) {
+                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null)
+            }
+            if (expanded) content()
+        }
+    }
+}
 
 private val MONTHS = listOf("ian", "feb", "mar", "apr", "mai", "iun", "iul", "aug", "sep", "oct", "nov", "dec")
 private val DAY_NAMES = listOf("luni", "marți", "miercuri", "joi", "vineri", "sâmbătă", "duminică")
@@ -49,9 +85,17 @@ fun WeekScreen(
     onPlanTomorrow: () -> Unit,
     startAdding: Boolean = false,
     onStartAddingShown: () -> Unit = {},
+    onOpenDay: (LocalDate) -> Unit = {},
     vm: WeekViewModel = viewModel()
 ) {
     val state by vm.state.collectAsState()
+    val view by vm.view.collectAsState()
+    val selectedDate by vm.selectedDate.collectAsState()
+    val month by vm.month.collectAsState()
+    val agenda by vm.agenda.collectAsState()
+    val monthDots by vm.monthDots.collectAsState()
+    var showSkeleton by rememberSaveable { mutableStateOf(false) }
+    var showScenario by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
 
     var adding by remember { mutableStateOf(false) }
@@ -66,7 +110,6 @@ fun WeekScreen(
     var pinning by remember { mutableStateOf<WeekTask?>(null) }
     var deadlineFor by remember { mutableStateOf<WeekTask?>(null) }
     var deleting by remember { mutableStateOf<WeekTask?>(null) }
-    var selectedDay by rememberSaveable { mutableIntStateOf(-1) }      // -1 = toate zilele
     var editingDay by remember { mutableStateOf<WeekViewModel.SkeletonDay?>(null) }
 
     Scaffold(
@@ -83,18 +126,69 @@ fun WeekScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // --- săptămâna și domeniul planului ---
+            // --- vederea: săptămâna (bandă + ziua ca linie de timp) sau luna (grilă + lista zilei) ---
             item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { vm.setOffset(0) }, enabled = state.offset > 0) { Text("‹") }
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = view == WeekViewModel.View.WEEK,
+                        onClick = { vm.setView(WeekViewModel.View.WEEK) },
+                        shape = SegmentedButtonDefaults.itemShape(0, 2)
+                    ) { Text("Săptămână") }
+                    SegmentedButton(
+                        selected = view == WeekViewModel.View.MONTH,
+                        onClick = { vm.setView(WeekViewModel.View.MONTH) },
+                        shape = SegmentedButtonDefaults.itemShape(1, 2)
+                    ) { Text("Lună") }
+                }
+            }
+            item {
+                if (view == WeekViewModel.View.WEEK) {
+                    WeekStrip(
+                        weekStart = state.weekStart,
+                        days = state.days,
+                        selected = selectedDate,
+                        canPrev = state.offset > 0,
+                        canNext = state.offset < 1,
+                        onPrev = { vm.setOffset(0) },
+                        onNext = { vm.setOffset(1) },
+                        onSelect = vm::select
+                    )
+                } else {
+                    MonthGrid(
+                        month = month,
+                        selected = selectedDate,
+                        dots = monthDots,
+                        onPrev = { vm.shiftMonth(-1) },
+                        onNext = { vm.shiftMonth(1) },
+                        onSelect = vm::select
+                    )
+                }
+            }
+            item {
+                SelectedDayHeader(
+                    date = selectedDate,
+                    cell = state.days.firstOrNull { it.date == selectedDate },
+                    dayOff = agenda?.dayOff == true,
+                    onOpenDay = { onOpenDay(selectedDate) }
+                )
+            }
+            item {
+                val items = agenda?.takeIf { it.date == selectedDate }?.items.orEmpty()
+                val empty = if (agenda?.dayOff == true) "Zi liberă: nimic planificat." else "Nimic planificat în ziua asta."
+                if (view == WeekViewModel.View.WEEK) DayAgendaTimeline(items, empty) else DayAgendaList(items, empty)
+            }
+
+            if (view == WeekViewModel.View.WEEK) {
+            // --- planul săptămânii ---
+            item {
+                Column(Modifier.padding(top = 12.dp)) {
+                    Text("Planul săptămânii", fontFamily = Fraunces, style = MaterialTheme.typography.titleLarge)
                     Text(
                         "${shortDate(state.weekStart)} – ${shortDate(state.weekStart.plusDays(6))}" +
-                                if (state.offset == 0) "  ·  săptămâna asta" else "  ·  săptămâna viitoare",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center
+                                if (state.offset == 0) " · săptămâna asta" else " · săptămâna viitoare",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    TextButton(onClick = { vm.setOffset(1) }, enabled = state.offset < 1) { Text("›") }
                 }
             }
             if (state.offset == 0) {
@@ -126,70 +220,6 @@ fun WeekScreen(
 
             // --- șansele ---
             item { ChanceCard(state) }
-
-            // --- grila zilelor ---
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    DayGrid(
-                        days = state.days,
-                        selected = selectedDay,
-                        onSelect = { selectedDay = if (selectedDay == it) -1 else it }
-                    )
-                    Text(
-                        "Bara arată cât din zi e plin: verde = e loc, galben = aproape plin, roșu = prea mult. " +
-                                "Apasă o zi ca să vezi ce e planificat în ea.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // --- scheletul săptămânii: ce e fix, trezirea, mesele; excepțiile cu un tap ---
-            if (state.skeleton.isNotEmpty()) {
-                item {
-                    SkeletonCard(days = state.skeleton, onEdit = { editingDay = it })
-                }
-            }
-
-            // --- scenariu ---
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Simulează", style = MaterialTheme.typography.titleSmall)
-                        OutlinedTextField(
-                            value = scenarioInput,
-                            onValueChange = { scenarioInput = it },
-                            placeholder = { Text("vreau liber joi după 14") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { vm.setScenario(scenarioInput) }, enabled = scenarioInput.isNotBlank()) {
-                                Text("Simulează")
-                            }
-                            if (state.scenarioText.isNotBlank()) {
-                                OutlinedButton(onClick = { scenarioInput = ""; vm.setScenario("") }) { Text("Șterge scenariul") }
-                            }
-                        }
-                        state.scenarioBlocks.forEach { b ->
-                            Text("• ${blockLabel(b)}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        state.scenarioIgnored.forEach {
-                            Text(
-                                "Nu am înțeles: „$it”. Încearcă „liber joi după 14” sau „ocupat marți 10-12”.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                        if (state.scenarioText.isNotBlank()) {
-                            Text(
-                                "Scenariul nu schimbă nimic până apeși „Redistribuie”.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
 
             // --- sarcini ---
             item {
@@ -237,64 +267,6 @@ fun WeekScreen(
                 }
             }
 
-            // --- sesiunile propuse: toate zilele, sau doar ziua apăsată în grilă ---
-            item {
-                val cell = state.days.getOrNull(selectedDay)
-                Text(
-                    if (cell == null) "Sesiunile propuse"
-                    else "${dayName(cell.date).replaceFirstChar { it.uppercase() }}, ${shortDate(cell.date)}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                if (cell != null) {
-                    Text(
-                        when {
-                            cell.dayOff -> "Zi liberă: nu planific nimic în ea."
-                            cell.budget <= 0 -> "Planificat ${formatDuration(cell.minutes)}."
-                            else -> "Planificat ${formatDuration(cell.minutes)} din cât reușești de obicei (${formatDuration(cell.budget)})."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            val shown = state.sessions.filter { selectedDay < 0 || it.date == state.days.getOrNull(selectedDay)?.date }
-            if (shown.isEmpty()) {
-                item {
-                    Text(
-                        if (selectedDay < 0) "Nicio sesiune propusă încă. Adaugă o sarcină mai sus."
-                        else "Nicio sesiune de la sarcinile săptămânii în ziua asta.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                val byDay = shown.groupBy { it.date }.toSortedMap()
-                byDay.forEach { (date, list) ->
-                    item(key = "day-$date") {
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (selectedDay < 0) {
-                                    Text(
-                                        "${dayName(date).replaceFirstChar { it.uppercase() }}, ${shortDate(date)}",
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                list.forEach { s ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            if (s.startMinute >= 0) "${clock(s.startMinute)}–${clock(s.endMinute)}" else "fără oră",
-                                            color = MaterialTheme.colorScheme.primary,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            modifier = Modifier.width(124.dp)
-                                        )
-                                        Text(s.title + if (s.pinned) "  📌" else "", modifier = Modifier.weight(1f))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
 
             // --- aplicare ---
             item {
@@ -315,6 +287,63 @@ fun WeekScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+            }
+
+            // --- mai multe: scheletul și simulările, strânse ca să nu încarce ecranul ---
+            if (state.skeleton.isNotEmpty()) {
+                item {
+                    Collapsible(
+                        title = "Scheletul săptămânii",
+                        subtitle = "Trezirea, ce e fix și mesele; schimbi ceva doar pentru o zi.",
+                        expanded = showSkeleton,
+                        onToggle = { showSkeleton = !showSkeleton }
+                    ) {
+                        SkeletonCard(days = state.skeleton, onEdit = { editingDay = it })
+                    }
+                }
+            }
+            item {
+                Collapsible(
+                    title = "Simulează o schimbare",
+                    subtitle = "„vreau liber joi după 14” – vezi cum se rearanjează săptămâna.",
+                    expanded = showScenario || state.scenarioText.isNotBlank(),
+                    onToggle = { showScenario = !showScenario }
+                ) {
+                    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = scenarioInput,
+                            onValueChange = { scenarioInput = it },
+                            placeholder = { Text("vreau liber joi după 14") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { vm.setScenario(scenarioInput) }, enabled = scenarioInput.isNotBlank()) {
+                                Text("Simulează")
+                            }
+                            if (state.scenarioText.isNotBlank()) {
+                                OutlinedButton(onClick = { scenarioInput = ""; vm.setScenario("") }) { Text("Șterge scenariul") }
+                            }
+                        }
+                        state.scenarioBlocks.forEach { b ->
+                            Text("• ${blockLabel(b)}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        state.scenarioIgnored.forEach {
+                            Text(
+                                "Nu am înțeles: „$it”. Încearcă „liber joi după 14” sau „ocupat marți 10-12”.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        if (state.scenarioText.isNotBlank()) {
+                            Text(
+                                "Scenariul nu schimbă nimic până apeși „Redistribuie”.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
             }
         }
     }
@@ -379,16 +408,8 @@ fun WeekScreen(
  */
 @Composable
 private fun SkeletonCard(days: List<WeekViewModel.SkeletonDay>, onEdit: (WeekViewModel.SkeletonDay) -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Scheletul săptămânii", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 16.dp))
-            Text(
-                "Ce e fix, când te trezești și mesele. Apasă o zi ca să schimbi ceva doar pentru ea.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            Spacer(Modifier.height(4.dp))
+    run {
+        Column(Modifier.padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             days.forEach { d ->
                 Row(
                     Modifier
@@ -529,48 +550,6 @@ private fun ChanceCard(state: WeekViewModel.UiState) {
                         "Analiza e oprită, deci folosesc valori generale (75% reușită, 5 h pe zi lucrătoare).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DayGrid(days: List<WeekViewModel.DayCell>, selected: Int, onSelect: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        days.forEachIndexed { index, cell ->
-            val ratio = if (cell.budget <= 0) 1f else (cell.minutes.toFloat() / cell.budget)
-            val color = when {
-                cell.dayOff -> MaterialTheme.colorScheme.outlineVariant
-                ratio > 1.15f -> MaterialTheme.colorScheme.error
-                ratio > 0.85f -> MaterialTheme.colorScheme.tertiary
-                else -> MaterialTheme.colorScheme.primary
-            }
-            Column(
-                Modifier.weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (index == selected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent)
-                    .clickable { onSelect(index) }
-                    .padding(vertical = 6.dp, horizontal = 2.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(Availability.shortDayName(index), style = MaterialTheme.typography.labelMedium)
-                Text("${cell.date.dayOfMonth}", style = MaterialTheme.typography.bodySmall)
-                Box(
-                    Modifier.fillMaxWidth().height(56.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Box(
-                        Modifier.fillMaxWidth().fillMaxHeight(ratio.coerceIn(0.04f, 1f))
-                            .background(color)
-                    )
-                }
-                Text(
-                    if (cell.dayOff) "liberă" else if (cell.minutes == 0) "–" else formatDuration(cell.minutes),
-                    style = MaterialTheme.typography.labelSmall
                 )
             }
         }

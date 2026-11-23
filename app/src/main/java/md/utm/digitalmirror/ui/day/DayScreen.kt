@@ -36,6 +36,9 @@ import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.domain.MoveSuggestions
 import md.utm.digitalmirror.domain.Replan
+import md.utm.digitalmirror.domain.CardMirror
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Insights
 import md.utm.digitalmirror.domain.QuickCapture
 import md.utm.digitalmirror.ui.theme.Fraunces
 import androidx.compose.ui.unit.sp
@@ -100,6 +103,10 @@ fun DayScreen(
     val skeleton by vm.skeleton.collectAsState()
     val sleep by vm.sleep.collectAsState()
     val dayWindow by vm.dayWindow.collectAsState()
+    // istoricul pentru oglinda de pe carduri; se reîncarcă când se schimbă activitățile zilei
+    val estimatorHistory by produceState(emptyList<HistoryEstimator.Sample>(), activities) {
+        value = vm.estimatorHistory()
+    }
     val sleepCheck by vm.sleepCheck.collectAsState()
     val isDayOff by vm.isDayOff.collectAsState()
     val legs by vm.legs.collectAsState()
@@ -426,7 +433,8 @@ fun DayScreen(
                             vm.postponeActivity(activity, MoveTarget.of(LocalDate.parse(activity.date)).date.toString())
                         },
                         onPostponePick = { moving = activity },
-                        onDelete = { vm.deleteActivity(activity) }
+                        onDelete = { vm.deleteActivity(activity) },
+                        mirror = if (analysisOn) mirrorFor(activity, estimatorHistory, vm.priorRatio) else null
                     )
                 }
 
@@ -635,7 +643,8 @@ private fun ActivityRow(
     onEdit: () -> Unit,
     onPostponeTomorrow: () -> Unit,
     onPostponePick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    mirror: String? = null                 // ce știe oglinda despre activitatea asta, pe scurt
 ) {
     val isClosed = activity.state in setOf("DONE", "PARTIAL", "ABANDONED")
     val isRunning = runningSince != null
@@ -679,6 +688,23 @@ private fun ActivityRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    // oglinda: ce spune istoricul tău despre activitatea asta
+                    mirror?.let {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Outlined.Insights,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
 
                     Tags.decode(activity.tags).takeIf { it.isNotEmpty() }?.let { tags ->
                         Text(
@@ -2084,6 +2110,32 @@ private fun PostponeDatePicker(
     ) {
         DatePicker(state = state)
     }
+}
+
+/**
+ * Oglinda de pe card, ca propoziție: înainte, ce spune istoricul (doar dacă spune clar altceva decât planul);
+ * după, cât a durat față de plan. null = nimic sigur de spus.
+ */
+private fun mirrorFor(activity: Activity, history: List<HistoryEstimator.Sample>, priorRatio: Double): String? {
+    val planned = activity.userEstimatedMinutes
+    if (activity.state == "DONE" || activity.state == "PARTIAL") {
+        // „copiată din plan” nu e o măsurătoare, deci nu are ce să arate
+        if (activity.actualSource == Activity.SOURCE_AS_PLANNED) return null
+        val took = CardMirror.took(planned, activity.actualMinutes) ?: return null
+        return when (took.versus) {
+            CardMirror.Versus.ON_PLAN -> "a durat ${formatDuration(took.actual)}, cât ai plănuit"
+            CardMirror.Versus.OVER -> "a durat ${formatDuration(took.actual)}, cu ${formatDuration(took.difference)} peste plan"
+            CardMirror.Versus.UNDER -> "a durat ${formatDuration(took.actual)}, cu ${formatDuration(took.difference)} sub plan"
+        }
+    }
+    if (activity.state != "PLANNED") return null
+    val estimate = HistoryEstimator.estimate(
+        history, activity.titleKey ?: TitleKey.of(activity.title), activity.categoryId, null, priorRatio
+    )
+    val u = CardMirror.usually(planned, estimate) ?: return null
+    val times = if (u.samples == 1) "o dată" else "${u.samples} dăți"
+    return if (u.sameActivity) "de obicei îți ia ~${formatDuration(u.minutes)}, nu ${formatDuration(u.planned)} (din $times)"
+    else "în categoria asta, de obicei ~${formatDuration(u.minutes)}, nu ${formatDuration(u.planned)}"
 }
 
 private fun stateLabel(state: String) = when (state) {

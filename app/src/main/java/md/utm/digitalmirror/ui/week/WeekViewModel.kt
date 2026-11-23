@@ -38,6 +38,9 @@ import md.utm.digitalmirror.domain.WeekScenario
 import md.utm.digitalmirror.reminder.ActivityReminders
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
+import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * Planul săptămânii: sarcini cu timp total, sesiuni, termen și zi fixată; aplicația le distribuie pe zile
@@ -154,6 +157,108 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
             Triple(o, s, t) to d
         }.mapLatest { (controls, d) -> compute(controls.first, controls.second, controls.third, d) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState())
+
+    // ---- calendarul: ziua aleasă (în bandă sau în lună) și ce e planificat în ea ----
+
+    enum class View { WEEK, MONTH }
+
+    /** Ce fel de lucru e în agenda unei zile. */
+    enum class Kind { ACTIVITY, PROPOSED, EVENT, FIXED }
+
+    data class AgendaItem(
+        val key: String,
+        val title: String,
+        val start: Int?,            // null = fără oră
+        val end: Int?,
+        val kind: Kind,
+        val colorHex: String? = null,
+        val state: String? = null,  // doar pentru activități
+        val allDay: Boolean = false
+    )
+
+    data class Agenda(val date: LocalDate, val items: List<AgendaItem>, val dayOff: Boolean)
+
+    private val selected = MutableStateFlow(LocalDate.now())
+    val selectedDate: StateFlow<LocalDate> = selected
+    private val shownMonth = MutableStateFlow(YearMonth.now())
+    val month: StateFlow<YearMonth> = shownMonth
+    private val shownView = MutableStateFlow(View.WEEK)
+    val view: StateFlow<View> = shownView
+
+    /** Ce e planificat în ziua aleasă: activități, evenimente din calendar, programul fix și sesiunile propuse. */
+    val agenda: StateFlow<Agenda?> = combine(
+        selected.flatMapLatest { date -> repo.observeActivitiesForDate(date.toString()).map { date to it } },
+        availability.observeRules(),
+        availability.observeDaysOff(),
+        repo.observeCategories(),
+        state.map { it.sessions }.distinctUntilChanged()
+    ) { (date, activities), rules, daysOffList, categories, sessions ->
+        val colors = categories.associate { it.id to it.colorHex }
+        val daysOff = daysOffList.map { it.date }.toSet()
+        val items = mutableListOf<AgendaItem>()
+        activities.filter { it.state != "POSTPONED" && it.state != "ABANDONED" }.forEach { a ->
+            val minutes = a.actualMinutes ?: a.userEstimatedMinutes ?: a.estimatedMinutes
+            items += AgendaItem(
+                key = "a${a.id}", title = a.title,
+                start = a.plannedStartMinute,
+                end = a.plannedStartMinute?.let { s -> minutes?.let { s + it } },
+                kind = Kind.ACTIVITY, colorHex = a.categoryId?.let(colors::get), state = a.state
+            )
+        }
+        // propunerea planului, doar ce nu e deja scris în zi
+        sessions.filter { it.date == date }.forEach { s ->
+            val written = activities.any { it.weekTaskId == s.taskId && it.plannedStartMinute == s.startMinute }
+            if (!written) items += AgendaItem("p${s.taskId}-${s.startMinute}", s.title, s.startMinute, s.endMinute, Kind.PROPOSED)
+        }
+        val ruleList = rules.map {
+            Availability.Rule(it.id, it.title, it.daysMask, it.startMinute, it.endMinute, it.travelBeforeMinutes, it.travelAfterMinutes, it.placeId)
+        }
+        Availability.blocksFor(date, ruleList, daysOff).forEach { b ->
+            items += AgendaItem("f${b.ruleId}", b.title, b.start, b.end, Kind.FIXED)
+        }
+        if (CalendarReader.hasPermission(app)) {
+            CalendarReader.eventsFor(app, date).forEach { e ->
+                items += AgendaItem(
+                    "e${e.id}-${e.startMinute}", e.title,
+                    if (e.allDay) null else e.startMinute, if (e.allDay) null else e.endMinute,
+                    Kind.EVENT, allDay = e.allDay
+                )
+            }
+        }
+        Agenda(date, items.sortedWith(compareBy({ it.start ?: Int.MAX_VALUE }, { it.kind.ordinal })), date.toString() in daysOff)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Pentru grila lunii: în ce zile e ceva planificat și culorile categoriilor (cel mult 3 puncte). */
+    val monthDots: StateFlow<Map<LocalDate, List<String?>>> = shownMonth.flatMapLatest { m ->
+        combine(
+            repo.observeActivitiesInRange(m.atDay(1).toString(), m.atEndOfMonth().toString()),
+            repo.observeCategories()
+        ) { activities, categories ->
+            val colors = categories.associate { it.id to it.colorHex }
+            activities.filter { it.state != "POSTPONED" && it.state != "ABANDONED" }
+                .groupBy { LocalDate.parse(it.date) }
+                .mapValues { (_, list) -> list.map { a -> a.categoryId?.let(colors::get) }.distinct().take(3) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Alege o zi; dacă e în săptămâna asta sau următoarea, banda și planul o urmează. */
+    fun select(date: LocalDate) {
+        selected.value = date
+        shownMonth.value = YearMonth.from(date)
+        val weeks = ChronoUnit.WEEKS.between(weekStart(0), PeriodReport.weekStart(date)).toInt()
+        if (weeks in 0..1) offset.value = weeks
+    }
+
+    fun setView(value: View) {
+        shownView.value = value
+        // banda arată doar săptămâna asta și următoarea: altfel revenim la azi
+        if (value == View.WEEK) {
+            val weeks = ChronoUnit.WEEKS.between(weekStart(0), PeriodReport.weekStart(selected.value)).toInt()
+            if (weeks !in 0..1) select(LocalDate.now())
+        }
+    }
+
+    fun shiftMonth(delta: Int) { shownMonth.value = shownMonth.value.plusMonths(delta.toLong()) }
 
     // ---- calculul planului ----
 
@@ -341,7 +446,11 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         if (updated.isEmpty) overrideDao.delete(date.toString()) else overrideDao.upsert(updated)
     }
 
-    fun setOffset(value: Int) { offset.value = value.coerceIn(0, 1) }
+    fun setOffset(value: Int) {
+        offset.value = value.coerceIn(0, 1)
+        // ziua aleasă trece în săptămâna arătată: azi, sau lunea săptămânii viitoare
+        select(if (offset.value == 0) LocalDate.now() else weekStart(1))
+    }
     fun setScope(value: Scope) { scope.value = value }
     fun setScenario(text: String) { scenarioText.value = text }
 

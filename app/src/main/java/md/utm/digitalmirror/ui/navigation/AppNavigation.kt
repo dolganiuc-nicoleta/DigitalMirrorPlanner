@@ -284,7 +284,11 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     onBack = null,
                     onPlanTomorrow = { navController.navigate(Routes.PLAN) },
                     startAdding = newTask,
-                    onStartAddingShown = { entry.savedStateHandle[OPEN_NEW_TASK] = false }
+                    onStartAddingShown = { entry.savedStateHandle[OPEN_NEW_TASK] = false },
+                    onOpenDay = { date ->
+                        openTab(Routes.DAY)
+                        runCatching { navController.getBackStackEntry(Routes.DAY).savedStateHandle[OPEN_DATE] = date.toString() }
+                    }
                 )
             }
 
