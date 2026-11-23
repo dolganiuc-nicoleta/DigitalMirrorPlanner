@@ -73,17 +73,20 @@ fun PlacesScreen(onBack: () -> Unit, vm: PlacesViewModel = viewModel()) {
                 )
             }
             item {
+                RouteMapCard(
+                    places = places,
+                    state = route,
+                    onFrom = vm::setRouteFrom,
+                    onTo = vm::setRouteTo,
+                    onSwap = vm::swapRoute,
+                    onMode = vm::chooseMode
+                )
+            }
+            item {
                 PresenceCard(
                     placeCount = places.size,
                     recentVisits = recentVisits,
                     onChanged = { vm.syncGeofences() }
-                )
-            }
-            item {
-                RouteCard(
-                    places = places,
-                    state = route,
-                    onEstimate = { from, to, mode -> vm.estimateRoute(from, to, mode) }
                 )
             }
             if (places.isEmpty()) {

@@ -38,7 +38,7 @@ import md.utm.digitalmirror.domain.TitleKey
         DayOverride::class,
         CapsuleBet::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -358,6 +358,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v20 → v21: traseul drumului, ca să-l desenăm pe hartă
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `travel_route` ADD COLUMN `geometry` TEXT")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -366,7 +373,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "digitalmirror.db"
                 )
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
-                    .addMigrations(MIGRATION_19_20)
+                    .addMigrations(MIGRATION_19_20, MIGRATION_20_21)
                     .build()
                     .also { INSTANCE = it }
             }

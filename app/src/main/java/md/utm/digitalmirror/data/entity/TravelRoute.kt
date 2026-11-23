@@ -18,5 +18,6 @@ data class TravelRoute(
     val profile: String,            // foot-walking, driving-car, cycling-regular
     val distanceMeters: Double,
     val durationSeconds: Double,
-    val fetchedAt: Long = System.currentTimeMillis()
+    val fetchedAt: Long = System.currentTimeMillis(),
+    val geometry: String? = null     // v21 · traseul, pentru hartă: „lat,lon;lat,lon;…” (vezi RouteGeometry)
 )

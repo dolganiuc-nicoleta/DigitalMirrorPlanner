@@ -18,7 +18,12 @@ object RouteService {
     // adresa veche (api.openrouteservice.org) se închide în noiembrie 2026
     private const val BASE_URL = "https://api.heigit.org/openrouteservice/v2/directions"
 
-    data class Raw(val distanceMeters: Double, val durationSeconds: Double)
+    /** [points] = traseul (lat, lon), pentru hartă; gol dacă serviciul nu l-a trimis. */
+    data class Raw(
+        val distanceMeters: Double,
+        val durationSeconds: Double,
+        val points: List<md.utm.digitalmirror.domain.RouteGeometry.Point> = emptyList()
+    )
 
     class RouteException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -44,10 +49,14 @@ object RouteService {
                 when (val code = connection.responseCode) {
                     200 -> {
                         val body = connection.inputStream.bufferedReader().use { it.readText() }
-                        val summary = JSONObject(body)
-                            .getJSONArray("features").getJSONObject(0)
-                            .getJSONObject("properties").getJSONObject("summary")
-                        Result.success(Raw(summary.getDouble("distance"), summary.getDouble("duration")))
+                        val feature = JSONObject(body).getJSONArray("features").getJSONObject(0)
+                        val summary = feature.getJSONObject("properties").getJSONObject("summary")
+                        // traseul: o linie de puncte [longitudine, latitudine]
+                        val coords = feature.optJSONObject("geometry")?.optJSONArray("coordinates")
+                        val points = (0 until (coords?.length() ?: 0)).mapNotNull { i ->
+                            coords!!.optJSONArray(i)?.let { md.utm.digitalmirror.domain.RouteGeometry.Point(it.getDouble(1), it.getDouble(0)) }
+                        }
+                        Result.success(Raw(summary.getDouble("distance"), summary.getDouble("duration"), points))
                     }
                     401, 403 -> fail("Cheia OpenRouteService nu e acceptată. Verifică local.properties.")
                     404 -> fail("Nu am găsit un drum între cele două locuri pentru acest mod de deplasare.")

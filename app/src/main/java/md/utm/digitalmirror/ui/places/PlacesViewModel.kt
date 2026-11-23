@@ -24,14 +24,19 @@ data class SearchState(
     val message: String? = null        // „Nu am găsit nimic.” sau eroarea de rețea
 )
 
-/** Rezultatul ultimei estimări de drum, pentru cardul „Drum între locuri”. */
-data class RouteUi(
+/**
+ * Harta drumurilor: perechea aleasă, toate modurile de deplasare cu durata și traseul lor,
+ * și modul cu care planifici de obicei (cel desenat pe hartă).
+ */
+data class RouteMapUi(
+    val fromId: Long? = null,
+    val toId: Long? = null,
     val loading: Boolean = false,
-    val outcome: TravelRepository.Outcome? = null,
-    val fromName: String = "",
-    val toName: String = "",
-    val error: String? = null
-)
+    val options: List<TravelRepository.ModeOption> = emptyList(),
+    val mode: TravelEstimator.Mode = TravelEstimator.Mode.WALK
+) {
+    val chosen: TravelRepository.ModeOption? get() = options.firstOrNull { it.mode == mode }
+}
 
 class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
 
@@ -42,18 +47,32 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
     private val availabilityDao = db.availabilityDao()
     private val travel = TravelRepository(app)
 
-    private val _route = MutableStateFlow(RouteUi())
-    val route: StateFlow<RouteUi> = _route
+    // pornim de acasă, cu modul tău obișnuit
+    private val _route = MutableStateFlow(RouteMapUi(fromId = TravelPrefs.homePlaceId(app), mode = TravelPrefs.mode(app)))
+    val route: StateFlow<RouteMapUi> = _route
+    private var routeJob: kotlinx.coroutines.Job? = null
 
-    /** Estimează drumul dintre două locuri; modul ales se păstrează pentru data viitoare. */
-    fun estimateRoute(from: Place, to: Place, mode: TravelEstimator.Mode) {
-        if (_route.value.loading) return
+    fun setRouteFrom(id: Long) = setPair(id, _route.value.toId)
+    fun setRouteTo(id: Long) = setPair(_route.value.fromId, id)
+    fun swapRoute() = setPair(_route.value.toId, _route.value.fromId)
+
+    /** Modul ales devine cel cu care se planifică drumurile din zi. */
+    fun chooseMode(mode: TravelEstimator.Mode) {
         TravelPrefs.setMode(app, mode)
-        _route.value = RouteUi(loading = true)
-        viewModelScope.launch {
-            travel.estimate(from, to, mode)
-                .onSuccess { _route.value = RouteUi(outcome = it, fromName = from.name, toName = to.name) }
-                .onFailure { _route.value = RouteUi(error = it.message ?: "Ceva nu a mers.") }
+        _route.value = _route.value.copy(mode = mode)
+    }
+
+    private fun setPair(fromId: Long?, toId: Long?) {
+        _route.value = _route.value.copy(fromId = fromId, toId = toId, options = emptyList(), loading = false)
+        routeJob?.cancel()
+        if (fromId == null || toId == null || fromId == toId) return
+        routeJob = viewModelScope.launch {
+            val all = dao.getAll()
+            val from = all.find { it.id == fromId } ?: return@launch
+            val to = all.find { it.id == toId } ?: return@launch
+            _route.value = _route.value.copy(loading = true)
+            val options = travel.allModes(from, to)
+            _route.value = _route.value.copy(loading = false, options = options)
         }
     }
 

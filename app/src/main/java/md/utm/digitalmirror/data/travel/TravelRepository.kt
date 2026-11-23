@@ -6,6 +6,7 @@ import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.entity.TravelRoute
 import md.utm.digitalmirror.data.geo.RouteService
 import md.utm.digitalmirror.domain.PresenceRules
+import md.utm.digitalmirror.domain.RouteGeometry
 import md.utm.digitalmirror.domain.TravelEstimator
 
 /**
@@ -21,7 +22,8 @@ class TravelRepository(context: Context) {
         val estimate: TravelEstimator.Estimate,
         val baseMinutes: Int,            // estimarea înainte de învățare
         val observedCount: Int,          // câte drumuri reale au contat
-        val distanceMeters: Double
+        val distanceMeters: Double,
+        val points: List<RouteGeometry.Point> = emptyList()   // traseul, pentru hartă
     )
 
     suspend fun estimate(from: Place, to: Place, mode: TravelEstimator.Mode): Result<Outcome> =
@@ -48,20 +50,41 @@ class TravelRepository(context: Context) {
         return result
     }
 
+    /** Un mod de deplasare pentru perechea aleasă: estimarea, sau de ce nu s-a putut calcula. */
+    data class ModeOption(val mode: TravelEstimator.Mode, val outcome: Outcome?, val error: String?)
+
+    /**
+     * Toate modurile de deplasare pentru o pereche, cu traseul fiecăruia (pentru hartă).
+     * Mașina și transportul public au același traseu rutier, deci se cere o singură dată.
+     */
+    suspend fun allModes(from: Place, to: Place): List<ModeOption> =
+        TravelEstimator.Mode.entries.map { mode ->
+            estimate(from, to, mode, allowNetwork = true, needGeometry = true).fold(
+                onSuccess = { ModeOption(mode, it, null) },
+                onFailure = { ModeOption(mode, null, it.message ?: "Nu s-a putut calcula.") }
+            )
+        }
+
     private suspend fun estimate(
-        from: Place, to: Place, mode: TravelEstimator.Mode, allowNetwork: Boolean
+        from: Place, to: Place, mode: TravelEstimator.Mode, allowNetwork: Boolean, needGeometry: Boolean = false
     ): Result<Outcome> {
         val routes = db.travelRouteDao()
-        val raw = routes.get(from.id, to.id, mode.orsProfile)
-            ?.let { RouteService.Raw(it.distanceMeters, it.durationSeconds) }
+        val cached = routes.get(from.id, to.id, mode.orsProfile)
+            // drumurile calculate înainte de v21 nu au traseu: pentru hartă le cerem din nou
+            ?.takeIf { !needGeometry || !it.geometry.isNullOrBlank() }
+        val raw = cached
+            ?.let { RouteService.Raw(it.distanceMeters, it.durationSeconds, RouteGeometry.decode(it.geometry)) }
             ?: run {
                 if (!allowNetwork) return Result.failure(IllegalStateException("Drumul nu e calculat încă."))
                 val fetched = RouteService.fetch(mode.orsProfile, from, to)
                     .getOrElse { return Result.failure(it) }
                 routes.upsert(
-                    TravelRoute(from.id, to.id, mode.orsProfile, fetched.distanceMeters, fetched.durationSeconds)
+                    TravelRoute(
+                        from.id, to.id, mode.orsProfile, fetched.distanceMeters, fetched.durationSeconds,
+                        geometry = fetched.points.takeIf { it.isNotEmpty() }?.let(RouteGeometry::encode)
+                    )
                 )
-                fetched
+                fetched.copy(points = RouteGeometry.simplify(fetched.points))
             }
 
         val base = TravelEstimator.base(mode, raw.distanceMeters, raw.durationSeconds)
@@ -71,7 +94,8 @@ class TravelRepository(context: Context) {
                 estimate = TravelEstimator.learn(base, observed),
                 baseMinutes = base.minutes,
                 observedCount = observed.size,
-                distanceMeters = raw.distanceMeters
+                distanceMeters = raw.distanceMeters,
+                points = raw.points
             )
         )
     }
