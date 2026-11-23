@@ -35,6 +35,7 @@ import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.Tags
 import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.domain.MoveSuggestions
+import md.utm.digitalmirror.domain.Replan
 import md.utm.digitalmirror.domain.QuickCapture
 import md.utm.digitalmirror.ui.theme.Fraunces
 import androidx.compose.ui.unit.sp
@@ -150,6 +151,7 @@ fun DayScreen(
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
     var postponing by remember { mutableStateOf<Activity?>(null) }   // activitatea pentru care alegem o zi
     var moving by remember { mutableStateOf<Activity?>(null) }       // activitatea pentru care arătăm propunerile „Mută”
+    var interrupting by remember { mutableStateOf(false) }           // foaia „⚡ A apărut ceva”
 
     LaunchedEffect(Unit) { vm.refreshRunning() }
 
@@ -276,6 +278,16 @@ fun DayScreen(
                 // încărcarea zilei, un rând discret sub arc (doar pentru azi și zilele viitoare)
                 dayLoad?.takeIf { analysisOn && date >= LocalDate.now().toString() && it.plannedMinutes > 0 }?.let { load ->
                     item(key = "day-load") { DayLoadCard(load) }
+                }
+
+                // „⚡ A apărut ceva”: doar azi, când ziua se poate strica
+                if (isTodayShown && !isDayOff) {
+                    item(key = "interrupt") {
+                        OutlinedButton(
+                            onClick = { interrupting = true },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                        ) { Text("⚡  A apărut ceva") }
+                    }
                 }
 
                 // somnul și pașii zilei: doar pentru zilele trecute (azi și mâine le arată arcul și confirmarea de dimineață)
@@ -560,6 +572,18 @@ fun DayScreen(
     }
 
     // amânare pe o zi aleasă
+    // „⚡ A apărut ceva”: cât te ține, apoi restul zilei refăcut, înainte să aplici
+    if (interrupting) {
+        InterruptSheet(
+            loadPreview = { until -> vm.replanPreview(until) },
+            onApply = { moves ->
+                vm.applyReplan(moves)
+                interrupting = false
+            },
+            onDismiss = { interrupting = false }
+        )
+    }
+
     // „Mută”: propuneri gata calculate; la capăt, alegerea liberă a zilei
     moving?.let { activity ->
         MoveSheet(
@@ -723,6 +747,100 @@ private fun ActivityRow(
  * Foaia „Mută”: unde mai încape activitatea, gata calculat (drumuri, mese, trezire, perna de seară).
  * Un tap pe o propunere și e mutată; la capăt, „Altă zi…” pentru alegerea liberă.
  */
+/**
+ * „⚡ A apărut ceva”: întâi cât te ține, apoi restul zilei refăcut. Nimic nu se schimbă până la „Aplică”.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun InterruptSheet(
+    loadPreview: suspend (until: Int) -> List<Replan.Move>,
+    onApply: (List<Replan.Move>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val now = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+    var until by remember { mutableStateOf<Int?>(null) }
+    var pickingTime by remember { mutableStateOf(false) }
+    val preview by produceState<List<Replan.Move>?>(null, until) {
+        value = null
+        until?.let { value = loadPreview(it) }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("A apărut ceva", fontFamily = Fraunces, fontWeight = FontWeight.SemiBold, fontSize = 28.sp)
+            val chosen = until
+            if (chosen == null) {
+                Text(
+                    "Se întâmplă. Cât te ține? Refac restul zilei, iar tu decizi dacă îl păstrezi.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(15, 30, 60, 120).forEach { m ->
+                        FilledTonalButton(onClick = { until = now + m }) { Text(formatDuration(m)) }
+                    }
+                    OutlinedButton(onClick = { pickingTime = true }) { Text("Până la…") }
+                    OutlinedButton(onClick = { until = 24 * 60 }) { Text("Tot restul zilei") }
+                }
+            } else {
+                Text(
+                    if (chosen >= 24 * 60) "Restul zilei e ocupat. Ce aveai de făcut trece pe mâine:"
+                    else "Ocupat până la ${formatMinute(chosen)}. Așa arată restul zilei:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                val moves = preview
+                when {
+                    moves == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    moves.isEmpty() -> Text(
+                        "N-ai activități de mutat azi; cursurile și calendarul rămân cum sunt. Ai grijă de tine.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    else -> moves.forEach { m ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(m.item.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(
+                                when (m.outcome) {
+                                    Replan.Outcome.STAYS -> "${formatMinute(m.item.start)} · rămâne"
+                                    Replan.Outcome.MOVED -> "${formatMinute(m.item.start)} → ${formatMinute(m.newStart!!)}"
+                                    Replan.Outcome.TOMORROW -> "→ mâine"
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (m.outcome == Replan.Outcome.STAYS) FontWeight.Normal else FontWeight.SemiBold,
+                                color = if (m.outcome == Replan.Outcome.STAYS) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                    Button(
+                        onClick = { moves?.let(onApply) },
+                        enabled = !moves.isNullOrEmpty() && moves.any { it.outcome != Replan.Outcome.STAYS }
+                    ) { Text("Aplică") }
+                    TextButton(onClick = { until = null }) { Text("Înapoi") }
+                }
+            }
+        }
+    }
+
+    if (pickingTime) {
+        TimePickerDialog(
+            initialMinute = ((now + 60) / 15 * 15).coerceAtMost(23 * 60 + 45),
+            onDismiss = { pickingTime = false },
+            onConfirm = { m ->
+                until = if (m > now) m else now + 15
+                pickingTime = false
+            }
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoveSheet(

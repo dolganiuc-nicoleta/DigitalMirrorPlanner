@@ -25,6 +25,7 @@ import md.utm.digitalmirror.domain.DayLoad
 import md.utm.digitalmirror.domain.DaySkeleton
 import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.domain.MoveSuggestions
+import md.utm.digitalmirror.domain.Replan
 import md.utm.digitalmirror.domain.SleepPlanner
 import md.utm.digitalmirror.data.travel.DayBusy
 import md.utm.digitalmirror.data.travel.TravelMatrix
@@ -433,6 +434,66 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         repo.updateActivity(moved)
         ActivityReminders.onActivityClosed(app, moved.id)
         ActivityReminders.onActivityPlanned(app, moved)
+    }
+
+    // ---- „⚡ A apărut ceva”: restul zilei, refăcut ----
+
+    /**
+     * Cum arată restul zilei de azi dacă ceva neprevăzut ține până la [until] (minute de la miezul nopții).
+     * Se mută doar activitățile tale neîncepute; cursurile, calendarul, blocurile și mesele rămân.
+     */
+    suspend fun replanPreview(until: Int): List<Replan.Move> {
+        val today = LocalDate.now()
+        val now = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+        val running = repo.runningSession()?.activityId
+        val all = repo.observeActivitiesForDate(today.toString()).first()
+            .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+
+        // de mutat: planificate, cu oră, care nu s-au terminat încă și nu sunt în lucru acum
+        val movable = all.filter { a ->
+            val start = a.plannedStartMinute ?: return@filter false
+            a.state == "PLANNED" && a.id != running &&
+                    TravelPlanner.TRAVEL_TAG !in Tags.decode(a.tags) &&
+                    start + (a.userEstimatedMinutes ?: a.estimatedMinutes ?: 30) > now
+        }
+        val items = movable.map {
+            Replan.Item(it.id, it.title, it.plannedStartMinute!!, it.userEstimatedMinutes ?: it.estimatedMinutes ?: 30, it.placeId)
+        }
+
+        // ce rămâne pe loc: restul activităților, calendarul, blocurile fixe și mesele
+        val others = all.filter { a -> movable.none { it.id == a.id } }
+        val rules = DayBusy.rules(app)
+        val daysOff = availabilityDao.observeDaysOff().first().map { it.date }.toSet()
+        val fixed = DayBusy.activities(others) +
+                DayBusy.calendar(app, today, DayBusy.calendarPlaces(app)) +
+                DayBusy.blocks(today, rules, daysOff)
+        val meals = skeletonMatrix.skeleton(fixed, today).meals.slots.map { SlotRecommender.Busy(it.start, it.end) }
+
+        val home = homePlaceId
+        val travel = skeletonMatrix.forPlanning(items.mapNotNull { it.placeId ?: home }, fixed.mapNotNull { it.placeId })
+        val dayEnd = DayBusy.window(app, today).second
+        return Replan.plan(items, fixed + meals, from = now, until = until.coerceAtLeast(now), dayEnd = dayEnd, travel = travel)
+    }
+
+    /** Aplică noul plan: mută ce s-a mutat; ce nu mai încape trece pe mâine (nu se socotește amânare). */
+    fun applyReplan(moves: List<Replan.Move>) = viewModelScope.launch {
+        val tomorrow = LocalDate.now().plusDays(1).toString()
+        for (m in moves) {
+            when (m.outcome) {
+                Replan.Outcome.STAYS -> Unit
+                Replan.Outcome.MOVED -> {
+                    val fresh = repo.getActivity(m.item.id) ?: continue
+                    val moved = fresh.copy(plannedStartMinute = m.newStart)
+                    repo.updateActivity(moved)
+                    ActivityReminders.onActivityPlanned(app, moved)
+                }
+                Replan.Outcome.TOMORROW -> {
+                    ActivityReminders.onActivityClosed(app, m.item.id)
+                    repo.postponeActivity(m.item.id, tomorrow, countAsPostponed = false)
+                    repo.getActivity(m.item.id)?.let { ActivityReminders.onActivityPlanned(app, it) }
+                }
+            }
+        }
     }
 
     // ---- confirmarea somnului, dimineața ----
