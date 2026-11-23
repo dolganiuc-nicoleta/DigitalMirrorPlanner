@@ -86,6 +86,7 @@ fun WeekScreen(
     startAdding: Boolean = false,
     onStartAddingShown: () -> Unit = {},
     onOpenDay: (LocalDate) -> Unit = {},
+    onOpenActivity: (Long) -> Unit = {},
     vm: WeekViewModel = viewModel()
 ) {
     val state by vm.state.collectAsState()
@@ -175,7 +176,7 @@ fun WeekScreen(
             item {
                 val items = agenda?.takeIf { it.date == selectedDate }?.items.orEmpty()
                 val empty = if (agenda?.dayOff == true) "Zi liberă: nimic planificat." else "Nimic planificat în ziua asta."
-                if (view == WeekViewModel.View.WEEK) DayAgendaTimeline(items, empty) else DayAgendaList(items, empty)
+                if (view == WeekViewModel.View.WEEK) DayAgendaTimeline(items, empty, onOpenActivity) else DayAgendaList(items, empty, onOpenActivity)
             }
 
             if (view == WeekViewModel.View.WEEK) {

@@ -280,7 +280,7 @@ fun SelectedDayHeader(
 // ---------------- ziua ca linie de timp (vederea săptămânii) ----------------
 
 @Composable
-fun DayAgendaTimeline(items: List<AgendaItem>, emptyText: String) {
+fun DayAgendaTimeline(items: List<AgendaItem>, emptyText: String, onOpen: (Long) -> Unit = {}) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -291,13 +291,13 @@ fun DayAgendaTimeline(items: List<AgendaItem>, emptyText: String) {
             if (items.isEmpty()) {
                 Text(emptyText, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
             }
-            items.forEach { item -> TimelineRow(item) }
+            items.forEach { item -> TimelineRow(item, onOpen) }
         }
     }
 }
 
 @Composable
-private fun TimelineRow(item: AgendaItem) {
+private fun TimelineRow(item: AgendaItem, onOpen: (Long) -> Unit) {
     val done = item.state == "DONE" || item.state == "PARTIAL"
     val accent = accentFor(item)
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -320,6 +320,7 @@ private fun TimelineRow(item: AgendaItem) {
                 .weight(1f)
                 .height(IntrinsicSize.Min)
                 .clip(shape)
+                .then(item.activityId?.let { id -> Modifier.clickable { onOpen(id) } } ?: Modifier)
                 .background(if (item.kind == Kind.PROPOSED) Color.Transparent else accent.copy(alpha = if (done) 0.08f else 0.14f))
                 .then(if (item.kind == Kind.PROPOSED) Modifier.border(1.dp, accent.copy(alpha = 0.6f), shape) else Modifier)
         ) {
@@ -357,7 +358,7 @@ private fun TimelineRow(item: AgendaItem) {
 // ---------------- ziua ca listă (vederea lunii) ----------------
 
 @Composable
-fun DayAgendaList(items: List<AgendaItem>, emptyText: String) {
+fun DayAgendaList(items: List<AgendaItem>, emptyText: String, onOpen: (Long) -> Unit = {}) {
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -372,7 +373,12 @@ fun DayAgendaList(items: List<AgendaItem>, emptyText: String) {
                 if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 val done = item.state == "DONE" || item.state == "PARTIAL"
                 val accent = accentFor(item)
-                Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .then(item.activityId?.let { id -> Modifier.clickable { onOpen(id) } } ?: Modifier)
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
                     val icon = when {
                         item.kind == Kind.ACTIVITY && done -> Icons.Outlined.CheckCircle
                         item.kind == Kind.ACTIVITY -> Icons.Outlined.RadioButtonUnchecked

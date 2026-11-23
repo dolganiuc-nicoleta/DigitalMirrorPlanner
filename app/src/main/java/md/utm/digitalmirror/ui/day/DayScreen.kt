@@ -39,6 +39,12 @@ import md.utm.digitalmirror.domain.Replan
 import md.utm.digitalmirror.domain.CardMirror
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.ui.text.style.TextAlign
 import md.utm.digitalmirror.domain.QuickCapture
 import md.utm.digitalmirror.ui.theme.Fraunces
 import androidx.compose.ui.unit.sp
@@ -1487,9 +1493,7 @@ private fun ActivityDialog(
         mutableStateOf(categories.find { it.id == initial?.categoryId })
     }
     var newCategory by remember { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
     var selectedPlaceId by remember { mutableStateOf(initial?.placeId) }
-    var placeExpanded by remember { mutableStateOf(false) }
     var startMinute by remember { mutableStateOf(initial?.plannedStartMinute ?: presetStartMinute) }
     var showTimePicker by remember { mutableStateOf(false) }
     var tagsInput by remember { mutableStateOf(initial?.let { Tags.toInput(it.tags) } ?: "") }
@@ -1581,11 +1585,11 @@ private fun ActivityDialog(
         )
     }
 
-    // intervalul recomandat; doar când ora nu e aleasă și ziua nu e în trecut
+    // intervalul recomandat; doar când ziua nu e în trecut (rămâne vizibil și după ce îl alegi)
     val slotSuggestion = run {
         val day = LocalDate.parse(date)
         val today = LocalDate.now()
-        if (!analysisOn || !revealed || startMinute != null || day.isBefore(today)) return@run null
+        if (!analysisOn || !revealed || day.isBefore(today)) return@run null
 
         val busy = busyWithTravel
 
@@ -1607,152 +1611,169 @@ private fun ActivityDialog(
         ) ?: SlotRecommender.firstFree(duration, busy, earliest, dayEnd)
     }
 
-    AlertDialog(
+    // categoria nou creată se alege singură când apare în listă
+    var addingCategory by remember { mutableStateOf(false) }
+    var pendingCategory by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(categories, pendingCategory) {
+        val name = pendingCategory ?: return@LaunchedEffect
+        categories.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }?.let {
+            selectedCategory = it
+            pendingCategory = null
+        }
+    }
+    var showDetails by remember { mutableStateOf(initial?.let { it.note.isNotBlank() || it.tags.isNotBlank() } ?: false) }
+    val dayLabel = remember(date) {
+        val d = LocalDate.parse(date)
+        val today = LocalDate.now()
+        val name = when (d) {
+            today -> "Azi"
+            today.plusDays(1) -> "Mâine"
+            else -> d.format(DateTimeFormatter.ofPattern("EEEE", Locale.forLanguageTag("ro"))).replaceFirstChar { it.uppercase() }
+        }
+        "$name, ${d.format(DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ro")))}"
+    }
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(if (isEdit) "Editează activitatea" else "Activitate nouă") },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Ce vrei să faci?") },
-                    singleLine = true
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            // antet
+            Column {
+                Text(
+                    if (isEdit) "Editează activitatea" else "Activitate nouă",
+                    fontFamily = Fraunces,
+                    style = MaterialTheme.typography.headlineSmall
                 )
+                Text(dayLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
 
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = selectedCategory?.name ?: "fără categorie",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Categorie") },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("fără categorie") },
-                            onClick = {
-                                selectedCategory = null
-                                expanded = false
+            // titlul: mare, fără chenar
+            TextField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = { Text("Ce vrei să faci?", style = MaterialTheme.typography.titleLarge) },
+                textStyle = MaterialTheme.typography.titleLarge,
+                maxLines = 2,
+                shape = RoundedCornerShape(16.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // categoria: cipuri, cu „+ Nouă” la capăt
+            FormSection("Categorie") {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    categories.forEach { c ->
+                        FilterChip(
+                            selected = selectedCategory?.id == c.id,
+                            onClick = { selectedCategory = if (selectedCategory?.id == c.id) null else c },
+                            label = { Text(c.name) },
+                            leadingIcon = {
+                                Box(Modifier.size(10.dp).clip(CircleShape).background(categoryColor(c.colorHex)))
                             }
                         )
-                        categories.forEach { category ->
-                            DropdownMenuItem(
-                                text = { Text(category.name) },
-                                onClick = {
-                                    selectedCategory = category
-                                    expanded = false
-                                }
-                            )
-                        }
                     }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = newCategory,
-                        onValueChange = { newCategory = it },
-                        label = { Text("Categorie nouă") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
+                    AssistChip(
+                        onClick = { addingCategory = !addingCategory },
+                        label = { Text("Nouă") },
+                        leadingIcon = { Icon(Icons.Outlined.Add, null, Modifier.size(18.dp)) }
                     )
-                    TextButton(
-                        onClick = {
-                            onAddCategory(newCategory)
-                            newCategory = ""
-                        }
-                    ) { Text("Adaugă") }
                 }
-
-                // unde se desfășoară (opțional); locurile se adaugă în Setări → Locuri
-                if (places.isEmpty()) {
-                    Hint("Ca să alegi un loc, adaugă-l mai întâi în Setări → Locuri.")
-                } else {
-                    ExposedDropdownMenuBox(
-                        expanded = placeExpanded,
-                        onExpandedChange = { placeExpanded = !placeExpanded }
-                    ) {
+                if (addingCategory) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
-                            value = places.find { it.id == selectedPlaceId }?.name ?: "fără loc",
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Unde?") },
-                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            value = newCategory,
+                            onValueChange = { newCategory = it },
+                            placeholder = { Text("Numele categoriei") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
                         )
-                        ExposedDropdownMenu(
-                            expanded = placeExpanded,
-                            onDismissRequest = { placeExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("fără loc") },
-                                onClick = {
-                                    selectedPlaceId = null
-                                    placeExpanded = false
-                                }
+                        FilledTonalButton(
+                            onClick = {
+                                onAddCategory(newCategory)
+                                pendingCategory = newCategory
+                                newCategory = ""
+                                addingCategory = false
+                            },
+                            enabled = newCategory.isNotBlank()
+                        ) { Text("Adaugă") }
+                    }
+                }
+            }
+
+            // locul (opțional); locurile se adaugă în Setări → Locuri
+            if (places.isNotEmpty()) {
+                FormSection("Unde?") {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = selectedPlaceId == null,
+                            onClick = { selectedPlaceId = null },
+                            label = { Text("Nu contează") }
+                        )
+                        places.forEach { place ->
+                            FilterChip(
+                                selected = selectedPlaceId == place.id,
+                                onClick = { selectedPlaceId = place.id },
+                                label = { Text(place.name) },
+                                leadingIcon = { Icon(Icons.Outlined.Place, null, Modifier.size(16.dp)) }
                             )
-                            places.forEach { place ->
-                                DropdownMenuItem(
-                                    text = { Text(place.name) },
-                                    onClick = {
-                                        selectedPlaceId = place.id
-                                        placeExpanded = false
-                                    }
-                                )
-                            }
                         }
                     }
                 }
+            }
 
-                if (!revealed) {
-                    // pasul 1: utilizatorul spune cât crede, fără să vadă propunerea
-                    DurationField(
-                        label = "Cât crezi că îți ia?",
-                        minutes = guessInput,
-                        onChange = { guessInput = it }
+            if (!revealed) {
+                // pasul 1: utilizatorul spune cât crede, fără să vadă propunerea
+                FormSection("Cât crezi că îți ia?") {
+                    DurationPicker(minutes = guessInput, onChange = { guessInput = it })
+                    Hint("Spune întâi cum crezi tu; apoi îți arăt ce zice istoricul tău.")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            guessMinutes = guessInput
+                            revealed = true
+                        },
+                        enabled = title.isNotBlank() && (guessInput ?: 0) > 0,
+                        modifier = Modifier.weight(1f).height(52.dp)
+                    ) { Text("Mai departe") }
+                    OutlinedButton(
+                        onClick = {
+                            guessMinutes = null
+                            revealed = true
+                        },
+                        enabled = title.isNotBlank(),
+                        modifier = Modifier.height(52.dp)
+                    ) { Text("Nu știu") }
+                }
+            } else {
+                // pasul 2: propunerea din istoric și durata planificată
+                estimate?.let { e ->
+                    EstimateCard(
+                        estimate = e,
+                        guessMinutes = guessMinutes,
+                        categoryName = selectedCategory?.name,
+                        onUseEstimate = { plannedMinutes = e.minutes },
+                        onKeepGuess = { guessMinutes?.let { plannedMinutes = it } }
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = {
-                                guessMinutes = guessInput
-                                revealed = true
-                            },
-                            enabled = title.isNotBlank() && (guessInput ?: 0) > 0
-                        ) { Text("Mai departe") }
-                        TextButton(
-                            onClick = {
-                                guessMinutes = null
-                                revealed = true
-                            },
-                            enabled = title.isNotBlank()
-                        ) { Text("Nu știu") }
-                    }
-                } else {
-                    // pasul 2: propunerea din istoric și durata planificată
-                    estimate?.let { e ->
-                        EstimateCard(
-                            estimate = e,
-                            guessMinutes = guessMinutes,
-                            categoryName = selectedCategory?.name,
-                            onUseEstimate = { plannedMinutes = e.minutes },
-                            onKeepGuess = { guessMinutes?.let { plannedMinutes = it } }
-                        )
-                    }
+                }
 
+                FormSection("Durata") {
+                    DurationPicker(minutes = plannedMinutes, onChange = { plannedMinutes = it })
                     if (isEdit) {
                         initial?.estimatedMinutes?.let { proposed ->
                             Hint(
@@ -1761,59 +1782,76 @@ private fun ActivityDialog(
                             )
                         }
                     }
+                }
 
-                    DurationField(
-                        label = "Durata planificată",
-                        minutes = plannedMinutes,
-                        onChange = { plannedMinutes = it },
-                        showQuickValues = estimate == null || estimate.level == HistoryEstimator.Level.PRIOR
-                    )
-
-                    // recomandarea orei de start
-                    slotSuggestion?.let { slot ->
-                        SlotHint(
-                            slot = slot,
-                            categoryName = selectedCategory?.name ?: "",
-                            onUse = { startMinute = slot.startMinute }
+                // ora: propunerea, o oră aleasă de tine sau fără oră
+                FormSection("Când?") {
+                    val suggested = slotSuggestion?.startMinute
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        slotSuggestion?.let { slot ->
+                            FilterChip(
+                                selected = startMinute == slot.startMinute,
+                                onClick = { startMinute = slot.startMinute },
+                                label = { Text("${formatMinute(slot.startMinute)}–${formatMinute(slot.endMinute)}") },
+                                leadingIcon = { Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(16.dp)) }
+                            )
+                        }
+                        val custom = startMinute?.takeIf { it != suggested }
+                        FilterChip(
+                            selected = custom != null,
+                            onClick = { showTimePicker = true },
+                            label = { Text(custom?.let { "La ${formatMinute(it)}" } ?: "Altă oră") },
+                            leadingIcon = { Icon(Icons.Outlined.Schedule, null, Modifier.size(16.dp)) }
+                        )
+                        FilterChip(
+                            selected = startMinute == null,
+                            onClick = { startMinute = null },
+                            label = { Text("Fără oră") }
                         )
                     }
-
-                    // ora de start (opțională)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(onClick = { showTimePicker = true }) {
-                            Text(startMinute?.let { "Ora: ${formatMinute(it)}" } ?: "Alege ora de start")
-                        }
-                        if (startMinute != null) {
-                            TextButton(onClick = { startMinute = null }) { Text("Fără oră") }
-                        }
+                    slotSuggestion?.let { slot ->
+                        Hint(
+                            if (slot.fromHistory)
+                                "✨ Recomandat: ~${slot.successPercent}% din activitățile ${selectedCategory?.name ?: ""} " +
+                                        "de la ora asta le-ai terminat (${slot.nearbyCount} din ${slot.sampleSize})."
+                            else "✨ Primul interval liber, ținând cont de activități, calendar și drumuri."
+                        )
                     }
-
                     // ora aleasă nu lasă timp de drum
                     travelFix?.let { fix ->
                         TravelFixHint(fix = fix, onMove = { startMinute = fix.moveTo })
                     }
-
-                    OutlinedTextField(
-                        value = tagsInput,
-                        onValueChange = { tagsInput = it },
-                        label = { Text("Etichete (opțional, de ex. #curs #urgent)") },
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = note,
-                        onValueChange = { note = it },
-                        label = { Text("Notiță (opțional)") },
-                        minLines = 2
-                    )
                 }
-            }
-        },
-        confirmButton = {
-            if (revealed) {
-                TextButton(
+
+                // etichete și notiță, ascunse până le ceri
+                if (!showDetails) {
+                    TextButton(onClick = { showDetails = true }, contentPadding = PaddingValues(0.dp)) {
+                        Icon(Icons.Outlined.Add, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Etichete și notiță")
+                    }
+                } else {
+                    FormSection("Detalii") {
+                        OutlinedTextField(
+                            value = tagsInput,
+                            onValueChange = { tagsInput = it },
+                            placeholder = { Text("#curs #urgent") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = note,
+                            onValueChange = { note = it },
+                            placeholder = { Text("Notiță") },
+                            minLines = 2,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                Button(
                     onClick = {
                         onConfirm(
                             ActivityFormResult(
@@ -1829,14 +1867,12 @@ private fun ActivityDialog(
                             )
                         )
                     },
-                    enabled = title.isNotBlank()
-                ) { Text("Salvează") }
+                    enabled = title.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) { Text(if (isEdit) "Salvează" else "Adaugă în zi") }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Anulează") }
         }
-    )
+    }
 
     if (showTimePicker) {
         TimePickerDialog(
@@ -2160,3 +2196,59 @@ private val dayFormatter = DateTimeFormatter.ofPattern("EEEE", ro)       // „s
 private val dateFormatter = DateTimeFormatter.ofPattern("d MMMM", ro)    // „3 octombrie”
 
 private fun formatMinute(m: Int): String = "%02d:%02d".format((m / 60) % 24, m % 60)
+/** O secțiune a formularului: o etichetă mică și conținutul ei. */
+@Composable
+private fun FormSection(label: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        content()
+    }
+}
+
+private fun categoryColor(hex: String): Color =
+    runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color(0xFF378ADD))
+
+/** Durata cu − / + (din 5 în 5 sub o oră, din 15 în 15 peste) și valori rapide. null = încă nealeasă. */
+@Composable
+private fun DurationPicker(minutes: Int?, onChange: (Int?) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalIconButton(
+                    onClick = {
+                        val m = minutes ?: return@FilledTonalIconButton
+                        onChange((m - if (m <= 60) 5 else 15).coerceAtLeast(5))
+                    },
+                    enabled = (minutes ?: 0) > 5
+                ) { Icon(Icons.Outlined.Remove, contentDescription = "Mai puțin") }
+                Text(
+                    minutes?.let(::formatDuration) ?: "—",
+                    fontFamily = Fraunces,
+                    style = MaterialTheme.typography.headlineMedium,
+                    textAlign = TextAlign.Center,
+                    color = if (minutes == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                FilledTonalIconButton(
+                    onClick = {
+                        val m = minutes ?: 15
+                        onChange(m + if (m < 60) 5 else 15)
+                    }
+                ) { Icon(Icons.Outlined.Add, contentDescription = "Mai mult") }
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(15, 30, 45, 60, 90, 120, 180).forEach { value ->
+                FilterChip(
+                    selected = minutes == value,
+                    onClick = { onChange(value) },
+                    label = { Text(formatDuration(value)) }
+                )
+            }
+        }
+    }
+}

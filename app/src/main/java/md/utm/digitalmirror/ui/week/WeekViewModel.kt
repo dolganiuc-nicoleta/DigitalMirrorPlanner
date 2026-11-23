@@ -173,7 +173,8 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         val kind: Kind,
         val colorHex: String? = null,
         val state: String? = null,  // doar pentru activități
-        val allDay: Boolean = false
+        val allDay: Boolean = false,
+        val activityId: Long? = null   // doar pentru activități: se deschide la apăsare
     )
 
     data class Agenda(val date: LocalDate, val items: List<AgendaItem>, val dayOff: Boolean)
@@ -202,7 +203,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
                 key = "a${a.id}", title = a.title,
                 start = a.plannedStartMinute,
                 end = a.plannedStartMinute?.let { s -> minutes?.let { s + it } },
-                kind = Kind.ACTIVITY, colorHex = a.categoryId?.let(colors::get), state = a.state
+                kind = Kind.ACTIVITY, colorHex = a.categoryId?.let(colors::get), state = a.state, activityId = a.id
             )
         }
         // propunerea planului, doar ce nu e deja scris în zi
