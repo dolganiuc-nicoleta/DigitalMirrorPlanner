@@ -42,8 +42,21 @@ object TravelEstimator {
             val ride = distanceMeters / 1000.0 / TRANSIT_KMH * 60.0
             Estimate(ceilMinutes(ride + TRANSIT_WAIT_MINUTES), Source.APPROXIMATION)
         }
-        else -> Estimate(ceilMinutes(routeSeconds / 60.0), Source.ROUTE)
+        // serviciul de rute nu ține cont de semafoare, treceri și opriri: în oraș durează ceva mai mult
+        Mode.WALK -> Estimate(ceilMinutes(routeSeconds / 60.0 * WALK_CITY_FACTOR), Source.ROUTE)
+        Mode.CAR -> Estimate(ceilMinutes(routeSeconds / 60.0 * CAR_CITY_FACTOR + CAR_PARKING_MINUTES), Source.ROUTE)
+        Mode.BIKE -> Estimate(ceilMinutes(routeSeconds / 60.0 * BIKE_CITY_FACTOR), Source.ROUTE)
     }
+
+    /**
+     * Corecțiile pentru oraș, potrivite după Google Maps pe un drum real din Chișinău (1,8 km):
+     * pe jos 21 → 25 min (Google: 26), cu mașina 5 → 8 min cu parcarea (Google: 7 fără parcare).
+     * Drumurile tale reale le corectează oricum, pe fiecare traseu.
+     */
+    const val WALK_CITY_FACTOR = 1.2
+    const val CAR_CITY_FACTOR = 1.3
+    const val CAR_PARKING_MINUTES = 2
+    const val BIKE_CITY_FACTOR = 1.15
 
     /**
      * Amestecă estimarea de bază cu drumurile reale observate.

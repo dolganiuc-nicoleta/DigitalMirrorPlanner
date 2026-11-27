@@ -12,10 +12,10 @@ import org.junit.Test
 class TravelEstimatorTest {
 
     @Test
-    fun `pe jos foloseste durata din serviciul de rute, rotunjita in sus`() {
-        // 1,2 km pe jos, 15 min 10 s
+    fun `pe jos foloseste durata din serviciul de rute, cu semafoarele din oras`() {
+        // 1,2 km pe jos, 15 min 10 s; în oraș × 1,2 = 18 min 12 s → 19
         val e = TravelEstimator.base(Mode.WALK, 1200.0, 15 * 60 + 10.0)
-        assertEquals(16, e.minutes)
+        assertEquals(19, e.minutes)
         assertEquals(Source.ROUTE, e.source)
     }
 

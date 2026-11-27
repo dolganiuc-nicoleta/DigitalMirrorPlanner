@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.outlined.DirectionsBus
 import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.SwapVert
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -140,6 +141,20 @@ fun RouteMapCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                    }
+                    // Google Maps știe liniile de autobuz și traficul: deschidem drumul acolo, cu modul ales
+                    val fromPlace = places.firstOrNull { it.id == state.fromId }
+                    val toPlace = places.firstOrNull { it.id == state.toId }
+                    if (fromPlace != null && toPlace != null) {
+                        val context = LocalContext.current
+                        OutlinedButton(
+                            onClick = { openInGoogleMaps(context, fromPlace, toPlace, state.mode) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Vezi în Google Maps · ${state.mode.label.lowercase()}")
+                        }
                     }
                     if (state.mode != state.defaultMode) {
                         TextButton(onClick = onUseForAll, contentPadding = PaddingValues(0.dp)) {
@@ -454,4 +469,28 @@ private fun RouteMap(
             view.invalidate()
         }
     )
+}
+
+/**
+ * Deschide drumul în Google Maps (aplicația sau, fără ea, browserul), cu modul ales.
+ * Google știe liniile de transport și traficul; aplicația noastră nu trimite nimic, doar deschide legătura.
+ */
+private fun openInGoogleMaps(context: Context, from: Place, to: Place, mode: Mode) {
+    val travelMode = when (mode) {
+        Mode.WALK -> "walking"
+        Mode.TRANSIT -> "transit"
+        Mode.CAR -> "driving"
+        Mode.BIKE -> "bicycling"
+    }
+    val uri = android.net.Uri.parse(
+        "https://www.google.com/maps/dir/?api=1" +
+                "&origin=${from.latitude},${from.longitude}" +
+                "&destination=${to.latitude},${to.longitude}" +
+                "&travelmode=$travelMode"
+    )
+    runCatching {
+        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.onFailure {
+        android.widget.Toast.makeText(context, "Nu am găsit Google Maps sau un browser.", android.widget.Toast.LENGTH_SHORT).show()
+    }
 }
