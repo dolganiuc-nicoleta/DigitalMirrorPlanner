@@ -1,6 +1,8 @@
 package md.utm.digitalmirror.ui.day
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -175,7 +177,15 @@ internal fun TimelineMealItem(meal: MealPlanner.Slot, startLabel: String) {
                 withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)) {
                     append(meal.kind.label)
                 }
-                append("  ${formatDuration(meal.end - meal.start)} · loc păstrat")
+                append("  ${formatDuration(meal.end - meal.start)} · ")
+                append(
+                    when (meal.fit) {
+                        MealPlanner.Fit.NORMAL -> "loc păstrat"
+                        MealPlanner.Fit.SHORT -> "în pauză, mai scurt"
+                        MealPlanner.Fit.EARLY -> "mai devreme, în pauză"
+                        MealPlanner.Fit.LATE -> "mai târziu, când ai loc"
+                    }
+                )
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -233,9 +243,13 @@ internal fun TimelinePrepItem(leg: TimelineTravel.Leg, startLabel: String) {
 
 /** „Spre Facultate · ajungi la 15:15 · 19 min”; cu avertisment când nu încape. */
 @Composable
-internal fun TimelineTravelItem(leg: TimelineTravel.Leg, toName: String, startLabel: String) {
+internal fun TimelineTravelItem(leg: TimelineTravel.Leg, toName: String, startLabel: String, onClick: (() -> Unit)? = null) {
     QuietRow(startLabel, Icons.AutoMirrored.Outlined.DirectionsWalk, MaterialTheme.colorScheme.onSurfaceVariant, null) {
-        Column {
+        // apăsat: harta cu drumul ăsta, modurile de deplasare și drumurile tale reale
+        Column(
+            if (onClick != null) Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick)
+            else Modifier
+        ) {
             Text(
                 buildAnnotatedString {
                     append("Spre $toName · ajungi la ")
@@ -243,6 +257,7 @@ internal fun TimelineTravelItem(leg: TimelineTravel.Leg, toName: String, startLa
                         append(clock(leg.end))
                     }
                     append(" · ${formatDuration(leg.travelMinutes)}")
+                    if (onClick != null) append("  ›")
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -21,7 +21,16 @@ import kotlin.math.roundToInt
 /** Locurile mele: listă, adăugare și editare cu hartă. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlacesScreen(onBack: () -> Unit, vm: PlacesViewModel = viewModel()) {
+fun PlacesScreen(
+    onBack: () -> Unit,
+    initialFrom: Long? = null,
+    initialTo: Long? = null,
+    vm: PlacesViewModel = viewModel()
+) {
+    // deschis de pe un drum din zi: harta pornește cu el
+    LaunchedEffect(initialFrom, initialTo) {
+        if (initialFrom != null && initialTo != null) vm.openRoute(initialFrom, initialTo)
+    }
     val places by vm.places.collectAsState()
     val recentVisits by vm.recentVisits.collectAsState()
     val route by vm.route.collectAsState()
@@ -79,7 +88,8 @@ fun PlacesScreen(onBack: () -> Unit, vm: PlacesViewModel = viewModel()) {
                     onFrom = vm::setRouteFrom,
                     onTo = vm::setRouteTo,
                     onSwap = vm::swapRoute,
-                    onMode = vm::chooseMode
+                    onMode = vm::chooseMode,
+                    onUseForAll = vm::useModeForAll
                 )
             }
             item {

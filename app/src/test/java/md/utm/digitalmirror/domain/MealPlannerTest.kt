@@ -30,9 +30,35 @@ class MealPlannerTest {
 
     @Test
     fun `fara loc - masa ramane fara loc`() {
-        val r = MealPlanner.place(listOf(lunch), listOf(Busy(h(11, 30), h(16, 30))))
+        // ocupat și cu o oră înainte și după fereastră
+        val r = MealPlanner.place(listOf(lunch), listOf(Busy(h(10, 30), h(16, 30))))
         assertTrue(r.slots.isEmpty())
         assertEquals(Kind.LUNCH, r.missing.single().kind)
+    }
+
+    @Test
+    fun `pauza de 20 de minute - masa scurta in pauza`() {
+        // cursuri 11:30–13:00 și 13:20–16:00: doar 20 min la prânz
+        val r = MealPlanner.place(listOf(lunch), listOf(Busy(h(11, 30), h(13)), Busy(h(13, 20), h(16))))
+        val slot = r.slots.single()
+        assertEquals(MealPlanner.Fit.SHORT, slot.fit)
+        assertEquals(h(13), slot.start)
+        assertEquals(h(13, 20), slot.end)
+    }
+
+    @Test
+    fun `pauza de la 11 - pranzul putin mai devreme`() {
+        // cursuri 9:30–11:00 și 11:30–16:00: singura pauză e înainte de fereastra prânzului
+        val r = MealPlanner.place(listOf(lunch), listOf(Busy(h(9, 30), h(11)), Busy(h(11, 30), h(16))))
+        val slot = r.slots.single()
+        assertEquals(MealPlanner.Fit.EARLY, slot.fit)
+        assertEquals(h(11), slot.start)
+    }
+
+    @Test
+    fun `pauza de 10 minute nu e masa`() {
+        val r = MealPlanner.place(listOf(lunch), listOf(Busy(h(10, 30), h(13)), Busy(h(13, 10), h(16, 30))))
+        assertTrue(r.slots.isEmpty())
     }
 
     @Test

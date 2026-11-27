@@ -5,8 +5,8 @@ import androidx.room.Entity
 /**
  * Rezultatul serviciului de rute pentru o pereche de locuri, păstrat pe telefon.
  * Așa același drum nu mai consumă din cota zilnică de cereri și merge și fără internet.
- * Se șterge când locul se mută sau se șterge. Cheia e profilul (nu modul): mașina și transportul public
- * folosesc aceeași distanță rutieră.
+ * Se șterge când locul se mută sau se șterge. Cheia e profilul (nu modul): pe jos și transportul public au același traseu
+ * (transportul public folosește traseul pe jos, ca aproximare a traseului autobuzului).
  */
 @Entity(
     tableName = "travel_route",

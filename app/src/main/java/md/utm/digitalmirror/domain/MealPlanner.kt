@@ -28,7 +28,16 @@ object MealPlanner {
         val enabled: Boolean = true
     )
 
-    data class Slot(val kind: Kind, val start: Int, val end: Int)
+    /** Cum a încăput masa: întreagă în fereastră, mai scurtă (într-o pauză), sau puțin în afara ferestrei. */
+    enum class Fit { NORMAL, SHORT, EARLY, LATE }
+
+    data class Slot(val kind: Kind, val start: Int, val end: Int, val fit: Fit = Fit.NORMAL)
+
+    /** O masă scurtă are cel puțin 2/3 din durată și cel puțin 15 minute (o pauză între cursuri). */
+    const val MIN_SHORT_MINUTES = 15
+
+    /** Cât poate ieși masa din fereastră, când înăuntru nu e niciun loc. */
+    const val STRETCH_MINUTES = 60
 
     data class Result(
         val slots: List<Slot>,
@@ -54,20 +63,47 @@ object MealPlanner {
         val missing = mutableListOf<Window>()
 
         for (w in windows.filter { it.enabled && it.to - it.from >= it.minutes }.sortedBy { it.from }) {
-            // cât mai aproape de mijlocul ferestrei
-            val ideal = (w.from + w.to - w.minutes) / 2
-            val best = (w.from..(w.to - w.minutes) step STEP)
-                .filter { start -> SlotRecommender.isFree(start, start + w.minutes, occupied) }
-                .minByOrNull { kotlin.math.abs(it - ideal) }
-
-            if (best == null) {
+            val slot = fit(w, occupied)
+            if (slot == null) {
                 missing += w
             } else {
-                slots += Slot(w.kind, best, best + w.minutes)
-                occupied += Busy(best, best + w.minutes)
+                slots += slot
+                occupied += Busy(slot.start, slot.end)
             }
         }
         return Result(slots, missing)
+    }
+
+    /**
+     * Locul unei mese, în ordinea preferinței:
+     *  1. întreagă, în fereastră, cât mai aproape de mijlocul ei;
+     *  2. mai scurtă, în fereastră (o pauză de 20–25 min între cursuri e tot o masă);
+     *  3. întreagă, până la o oră înainte sau după fereastră (pauza de la 11:00 e bună de prânz);
+     *  4. mai scurtă, până la o oră în afara ferestrei.
+     */
+    private fun fit(w: Window, occupied: List<Busy>): Slot? {
+        val ideal = (w.from + w.to - w.minutes) / 2
+        val shortest = maxOf(MIN_SHORT_MINUTES, (w.minutes * 2 + 2) / 3).coerceAtMost(w.minutes)
+        val wideFrom = (w.from - STRETCH_MINUTES).coerceAtLeast(0)
+        val wideTo = (w.to + STRETCH_MINUTES).coerceAtMost(24 * 60)
+
+        // cel mai bun început pentru o masă de [minutes] în [from, to)
+        fun best(from: Int, to: Int, minutes: Int): Int? =
+            (from..(to - minutes) step STEP)
+                .filter { start -> SlotRecommender.isFree(start, start + minutes, occupied) }
+                .minByOrNull { kotlin.math.abs(it - ideal) }
+
+        // cea mai lungă masă scurtă din [from, to), între [shortest] și durata întreagă
+        fun bestShort(from: Int, to: Int): Pair<Int, Int>? =
+            (w.minutes - STEP downTo shortest step STEP).firstNotNullOfOrNull { m -> best(from, to, m)?.let { it to m } }
+
+        fun outside(start: Int) = if (start < w.from) Fit.EARLY else Fit.LATE
+
+        best(w.from, w.to, w.minutes)?.let { return Slot(w.kind, it, it + w.minutes) }
+        bestShort(w.from, w.to)?.let { (s, m) -> return Slot(w.kind, s, s + m, Fit.SHORT) }
+        best(wideFrom, wideTo, w.minutes)?.let { return Slot(w.kind, it, it + w.minutes, outside(it)) }
+        bestShort(wideFrom, wideTo)?.let { (s, m) -> return Slot(w.kind, s, s + m, if (s in w.from until w.to) Fit.SHORT else outside(s)) }
+        return null
     }
 }
 

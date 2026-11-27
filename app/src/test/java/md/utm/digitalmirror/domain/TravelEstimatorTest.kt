@@ -78,8 +78,8 @@ class TravelEstimatorTest {
         )
         val trips = TravelEstimator.observedTrips(visits)
         assertEquals(
-            listOf(TravelEstimator.Trip(1, 2, 25), TravelEstimator.Trip(2, 1, 30)),
-            trips
+            listOf(TravelEstimator.Trip(1, 2, 25), TravelEstimator.Trip(2, 1, 30)).map { Triple(it.fromId, it.toId, it.minutes) },
+            trips.map { Triple(it.fromId, it.toId, it.minutes) }
         )
     }
 

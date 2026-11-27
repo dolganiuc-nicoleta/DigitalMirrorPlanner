@@ -33,7 +33,8 @@ data class RouteMapUi(
     val toId: Long? = null,
     val loading: Boolean = false,
     val options: List<TravelRepository.ModeOption> = emptyList(),
-    val mode: TravelEstimator.Mode = TravelEstimator.Mode.WALK
+    val mode: TravelEstimator.Mode = TravelEstimator.Mode.WALK,          // modul acestui drum
+    val defaultMode: TravelEstimator.Mode = TravelEstimator.Mode.WALK,   // modul obișnuit, pentru drumurile fără mod ales
 ) {
     val chosen: TravelRepository.ModeOption? get() = options.firstOrNull { it.mode == mode }
 }
@@ -48,22 +49,39 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
     private val travel = TravelRepository(app)
 
     // pornim de acasă, cu modul tău obișnuit
-    private val _route = MutableStateFlow(RouteMapUi(fromId = TravelPrefs.homePlaceId(app), mode = TravelPrefs.mode(app)))
+    private val _route = MutableStateFlow(
+        RouteMapUi(fromId = TravelPrefs.homePlaceId(app), mode = TravelPrefs.mode(app), defaultMode = TravelPrefs.mode(app))
+    )
     val route: StateFlow<RouteMapUi> = _route
     private var routeJob: kotlinx.coroutines.Job? = null
 
     fun setRouteFrom(id: Long) = setPair(id, _route.value.toId)
     fun setRouteTo(id: Long) = setPair(_route.value.fromId, id)
     fun swapRoute() = setPair(_route.value.toId, _route.value.fromId)
+    fun openRoute(from: Long, to: Long) = setPair(from, to)
 
-    /** Modul ales devine cel cu care se planifică drumurile din zi. */
+    /** Modul ales devine cel cu care se planifică acest drum (în ambele sensuri). */
     fun chooseMode(mode: TravelEstimator.Mode) {
-        TravelPrefs.setMode(app, mode)
-        _route.value = _route.value.copy(mode = mode)
+        val r = _route.value
+        val from = r.fromId ?: return
+        val to = r.toId ?: return
+        TravelPrefs.setRouteMode(app, from, to, mode.takeIf { it != r.defaultMode })
+        setPair(from, to)     // drumurile reale trec la modul nou
+    }
+
+    /** Modul acestui drum devine cel obișnuit, pentru toate drumurile fără mod ales. */
+    fun useModeForAll() {
+        val r = _route.value
+        TravelPrefs.setMode(app, r.mode)
+        if (r.fromId != null && r.toId != null) TravelPrefs.setRouteMode(app, r.fromId, r.toId, null)
+        _route.value = r.copy(defaultMode = r.mode)
     }
 
     private fun setPair(fromId: Long?, toId: Long?) {
-        _route.value = _route.value.copy(fromId = fromId, toId = toId, options = emptyList(), loading = false)
+        val mode = if (fromId != null && toId != null) TravelPrefs.modeFor(app, fromId, toId) else _route.value.defaultMode
+        _route.value = _route.value.copy(fromId = fromId, toId = toId, mode = mode, loading = false,
+            // același drum (s-a schimbat doar modul): lista veche rămâne până vine cea nouă
+            options = if (fromId == _route.value.fromId && toId == _route.value.toId) _route.value.options else emptyList())
         routeJob?.cancel()
         if (fromId == null || toId == null || fromId == toId) return
         routeJob = viewModelScope.launch {
@@ -78,6 +96,21 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
 
     val places: StateFlow<List<Place>> =
         dao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // harta pornește cu un drum deja ales: de acasă (sau primul loc) până la alt loc
+    init {
+        viewModelScope.launch {
+            dao.observeAll().collect { list ->
+                val r = _route.value
+                val ids = list.map { it.id }.toSet()
+                val from = r.fromId?.takeIf { it in ids }
+                    ?: list.firstOrNull { it.name.contains("acas", ignoreCase = true) }?.id
+                    ?: list.firstOrNull()?.id
+                val to = r.toId?.takeIf { it in ids && it != from } ?: list.firstOrNull { it.id != from }?.id
+                if (from != r.fromId || to != r.toId) setPair(from, to)
+            }
+        }
+    }
 
     // ultimele intrări detectate, ca utilizatorul să vadă că detectarea merge
     val recentVisits: StateFlow<List<RecentVisit>> =

@@ -9,6 +9,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,7 @@ import md.utm.digitalmirror.data.entity.Place
 import md.utm.digitalmirror.data.travel.TravelRepository
 import md.utm.digitalmirror.domain.PlaceRules
 import md.utm.digitalmirror.domain.RouteGeometry
+import md.utm.digitalmirror.domain.TravelEstimator
 import md.utm.digitalmirror.domain.TravelEstimator.Mode
 import md.utm.digitalmirror.domain.TravelEstimator.Source
 import md.utm.digitalmirror.ui.components.formatDuration
@@ -67,7 +69,8 @@ fun RouteMapCard(
     onFrom: (Long) -> Unit,
     onTo: (Long) -> Unit,
     onSwap: () -> Unit,
-    onMode: (Mode) -> Unit
+    onMode: (Mode) -> Unit,
+    onUseForAll: () -> Unit = {}
 ) {
     if (places.size < 2) return   // un drum are nevoie de două locuri
 
@@ -117,7 +120,7 @@ fun RouteMapCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                state.loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                state.loading && state.options.isEmpty() -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
                     Text("Calculez drumul…", style = MaterialTheme.typography.bodyMedium)
@@ -128,12 +131,29 @@ fun RouteMapCard(
                             ModeRow(option, selected = option.mode == state.mode, onClick = { onMode(option.mode) })
                         }
                     }
+                    // drum scurt: autobuzul nu câștigă mare lucru după ce aștepți în stație
+                    val walk = state.options.firstOrNull { it.mode == Mode.WALK }?.outcome?.estimate?.minutes
+                    val bus = state.options.firstOrNull { it.mode == Mode.TRANSIT }?.outcome?.estimate?.minutes
+                    if (walk != null && bus != null && walk <= bus + 5) {
+                        Text(
+                            "Pe jos ajungi aproape la fel de repede (${formatDuration(walk)}): nu aștepți în stație.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    if (state.mode != state.defaultMode) {
+                        TextButton(onClick = onUseForAll, contentPadding = PaddingValues(0.dp)) {
+                            Text("Folosește „${state.mode.label}” pentru toate drumurile")
+                        }
+                    }
                     state.chosen?.outcome?.let { o ->
+                        o.spread?.let { SpreadCard(it) }
                         Text(
                             explain(o),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        RealTrips(o.trips)
                     }
                 }
             }
@@ -180,7 +200,8 @@ private fun ModeRow(option: TravelRepository.ModeOption, selected: Boolean, onCl
                 Text(
                     when {
                         o == null -> option.error ?: "Nu s-a putut calcula."
-                        selected -> "folosit la planificare · ${PlaceRules.distanceLabel(o.distanceMeters)}"
+                        selected && o.observedCount > 0 -> "cum faci drumul ăsta · traseul singur ${formatDuration(o.baseMinutes)}, corectat din drumurile tale"
+                        selected -> "cum faci drumul ăsta · ${PlaceRules.distanceLabel(o.distanceMeters)}"
                         o.estimate.source == Source.LEARNED -> "din drumurile tale reale"
                         o.estimate.source == Source.APPROXIMATION -> "aproximare"
                         else -> PlaceRules.distanceLabel(o.distanceMeters)
@@ -200,6 +221,90 @@ private fun ModeRow(option: TravelRepository.ModeOption, selected: Boolean, onCl
     }
 }
 
+/** „De obicei 25 min, uneori până la 40 · planific cu 35”: cât variază drumul și cu cât se planifică. */
+@Composable
+private fun SpreadCard(s: TravelEstimator.Spread) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val color = MaterialTheme.colorScheme.onSecondaryContainer
+            if (s.low != null && s.high != null) {
+                Text("De obicei ${formatDuration(s.typical)}", style = MaterialTheme.typography.titleMedium, color = color)
+                Text(
+                    if (s.high > s.typical) "uneori până la ${formatDuration(s.high)} (cel mai repede ${formatDuration(s.low)})"
+                    else "aproape mereu la fel",
+                    style = MaterialTheme.typography.bodyMedium, color = color
+                )
+                Text(
+                    if (s.planned > s.typical)
+                        "Planific cu ${formatDuration(s.planned)}, ca să nu întârzii în zilele mai lente (ambuteiaj, autobuz pierdut)."
+                    else "Planific cu ${formatDuration(s.planned)}.",
+                    style = MaterialTheme.typography.bodySmall, color = color
+                )
+            } else {
+                Text("Planific cu ${formatDuration(s.planned)}", style = MaterialTheme.typography.titleMedium, color = color)
+                Text(
+                    if (s.count == 0) "Încă nu am drumuri reale aici. După ${TravelEstimator.MIN_FOR_SPREAD} drumuri îți arăt cât variază."
+                    else "Am ${s.count} din ${TravelEstimator.MIN_FOR_SPREAD} drumuri reale de care am nevoie ca să-ți arăt cât variază.",
+                    style = MaterialTheme.typography.bodySmall, color = color
+                )
+            }
+        }
+    }
+}
+
+private val TRIP_DAYS = listOf("luni", "marți", "miercuri", "joi", "vineri", "sâmbătă", "duminică")
+
+/** Drumurile reale pe ruta aleasă: când ai plecat și cât ți-a luat, cu o bară ca să se vadă diferențele. */
+@Composable
+private fun RealTrips(trips: List<TravelEstimator.Trip>) {
+    if (trips.isEmpty()) {
+        Text(
+            "Drumurile reale apar aici singure: telefonul vede când ieși dintr-un loc și când ajungi în celălalt " +
+                    "(cu detectarea locurilor pornită, mai jos).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Drumurile tale reale", style = MaterialTheme.typography.labelLarge)
+        val shown = trips.take(8)
+        val longest = shown.maxOf { it.minutes }.coerceAtLeast(1)
+        val zone = java.time.ZoneId.systemDefault()
+        shown.forEach { t ->
+            val at = java.time.Instant.ofEpochMilli(t.departAt).atZone(zone)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${TRIP_DAYS[at.dayOfWeek.value - 1]} ${at.dayOfMonth}.${"%02d".format(at.monthValue)}, " +
+                            "%02d:%02d".format(at.hour, at.minute),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(130.dp)
+                )
+                Box(
+                    Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Box(
+                        Modifier.fillMaxHeight().fillMaxWidth(t.minutes.toFloat() / longest)
+                            .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+                Text(
+                    formatDuration(t.minutes),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.width(64.dp).padding(start = 8.dp)
+                )
+            }
+        }
+    }
+}
+
 // de unde vine estimarea modului ales, în cuvinte
 private fun explain(o: TravelRepository.Outcome): String {
     val distance = PlaceRules.distanceLabel(o.distanceMeters)
@@ -207,7 +312,8 @@ private fun explain(o: TravelRepository.Outcome): String {
         Source.ROUTE -> "Calculat de OpenRouteService pe traseul de pe hartă ($distance), fără trafic. " +
                 "Pe măsură ce faci drumul, se corectează din timpii tăi reali."
         Source.APPROXIMATION ->
-            "Transport public: aproximare din distanța rutieră ($distance), viteza medie în oraș și așteptarea în stație. " +
+            "Transport public: serviciul de rute nu are autobuze, așa că pe hartă e traseul cel mai scurt pe străzi ($distance), " +
+                    "iar durata vine din viteza medie a transportului în oraș și așteptarea în stație. " +
                     "Se corectează din drumurile tale detectate."
         Source.LEARNED -> {
             val n = o.observedCount

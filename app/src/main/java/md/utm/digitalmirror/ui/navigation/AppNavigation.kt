@@ -74,7 +74,8 @@ object Routes {
     const val CLOSING = "closing/{date}"
     const val ONBOARDING = "onboarding"
     const val AUTH = "auth"
-    const val PLACES = "places"
+    const val PLACES = "places?from={from}&to={to}"
+    fun places(from: Long? = null, to: Long? = null) = "places?from=${from ?: -1}&to=${to ?: -1}"
     const val ACTIVITY = "activity/{id}"
     const val MIRROR = "mirror"
     const val CAPTURE = "capture"
@@ -225,7 +226,8 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     onOpenActivity = { id -> navController.navigate(Routes.activity(id)) },
                     onPlan = { navController.navigate(Routes.PLAN) },
                     onPlanWeek = { navController.navigate(Routes.WEEK) },
-                    onPrep = { navController.navigate(Routes.PREP) }
+                    onPrep = { navController.navigate(Routes.PREP) },
+                    onOpenRoute = { from, to -> navController.navigate(Routes.places(from, to)) }
                 )
             }
 
@@ -339,6 +341,7 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
             composable(Routes.PROFILE) {
                 ProfileScreen(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                    onOpenPlaces = { navController.navigate(Routes.places()) },
                     onOpenAuth = { navController.navigate(Routes.AUTH) }
                 )
             }
@@ -346,12 +349,22 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
             composable(Routes.SETTINGS) {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
-                    onOpenPlaces = { navController.navigate(Routes.PLACES) }
+                    onOpenPlaces = { navController.navigate(Routes.places()) }
                 )
             }
 
-            composable(Routes.PLACES) {
-                PlacesScreen(onBack = { navController.popBackStack() })
+            composable(
+                route = Routes.PLACES,
+                arguments = listOf(
+                    navArgument("from") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("to") { type = NavType.LongType; defaultValue = -1L }
+                )
+            ) { entry ->
+                PlacesScreen(
+                    onBack = { navController.popBackStack() },
+                    initialFrom = entry.arguments?.getLong("from")?.takeIf { it > 0 },
+                    initialTo = entry.arguments?.getLong("to")?.takeIf { it > 0 }
+                )
             }
 
             composable(

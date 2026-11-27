@@ -84,6 +84,7 @@ fun DayScreen(
     onPlan: () -> Unit = {},
     onPlanWeek: () -> Unit = {},
     onPrep: () -> Unit = {},
+    onOpenRoute: (fromPlaceId: Long, toPlaceId: Long) -> Unit = { _, _ -> },
     vm: DayViewModel = viewModel()
 ) {
     // altă pagină a cerut o anumită zi (de ex. mâine, din închiderea zilei)
@@ -471,7 +472,8 @@ fun DayScreen(
                         is TimelineEntry.Travel -> TimelineTravelItem(
                             leg = entry.leg,
                             toName = entry.toName,
-                            startLabel = formatMinute(entry.leg.start)
+                            startLabel = formatMinute(entry.leg.start),
+                            onClick = { onOpenRoute(entry.leg.fromPlaceId, entry.leg.toPlaceId) }
                         )
                         is TimelineEntry.Act -> {
                             val a = entry.activity

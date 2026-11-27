@@ -13,7 +13,7 @@ import md.utm.digitalmirror.domain.TravelEstimator
  * Estimarea unui drum între două locuri: distanța din serviciul de rute (păstrată pe telefon),
  * apoi corectată cu drumurile reale ale utilizatorului din ultimele 60 de zile.
  */
-class TravelRepository(context: Context) {
+class TravelRepository(private val context: Context) {
 
     private val db = AppDatabase.get(context)
 
@@ -23,7 +23,9 @@ class TravelRepository(context: Context) {
         val baseMinutes: Int,            // estimarea înainte de învățare
         val observedCount: Int,          // câte drumuri reale au contat
         val distanceMeters: Double,
-        val points: List<RouteGeometry.Point> = emptyList()   // traseul, pentru hartă
+        val points: List<RouteGeometry.Point> = emptyList(),  // traseul, pentru hartă
+        val spread: TravelEstimator.Spread? = null,           // cât variază drumul și cu cât planificăm
+        val trips: List<TravelEstimator.Trip> = emptyList()   // drumurile reale A → B, cele mai noi primele
     )
 
     suspend fun estimate(from: Place, to: Place, mode: TravelEstimator.Mode): Result<Outcome> =
@@ -34,6 +36,7 @@ class TravelRepository(context: Context) {
      * Drumurile deja calculate vin de pe telefon; restul se cer de la serviciul de rute.
      * La prima eroare de rețea nu mai încercăm rețeaua (ca planificarea să nu aștepte la fiecare pereche);
      * perechile fără răspuns lipsesc din rezultat, iar planificarea folosește atunci drumul fix.
+     * Fiecare drum se calculează cu modul ales pentru el (altfel [mode]) și cu valoarea prudentă din drumurile reale.
      */
     suspend fun minutesFor(pairs: Set<Pair<Long, Long>>, mode: TravelEstimator.Mode): Map<Pair<Long, Long>, Int> {
         if (pairs.isEmpty()) return emptyMap()
@@ -43,8 +46,9 @@ class TravelRepository(context: Context) {
         for (pair in pairs) {
             val from = places[pair.first] ?: continue
             val to = places[pair.second] ?: continue
-            estimate(from, to, mode, allowNetwork = network)
-                .onSuccess { result[pair] = it.estimate.minutes }
+            val pairMode = md.utm.digitalmirror.data.prefs.TravelPrefs.routeMode(context, from.id, to.id) ?: mode
+            estimate(from, to, pairMode, allowNetwork = network)
+                .onSuccess { result[pair] = it.spread?.planned ?: it.estimate.minutes }
                 .onFailure { if (it is RouteService.RouteException) network = false }
         }
         return result
@@ -55,7 +59,7 @@ class TravelRepository(context: Context) {
 
     /**
      * Toate modurile de deplasare pentru o pereche, cu traseul fiecăruia (pentru hartă).
-     * Mașina și transportul public au același traseu rutier, deci se cere o singură dată.
+     * Transportul public folosește traseul pe jos (ORS nu are autobuze), deci se cere o singură dată pentru amândouă.
      */
     suspend fun allModes(from: Place, to: Place): List<ModeOption> =
         TravelEstimator.Mode.entries.map { mode ->
@@ -88,20 +92,26 @@ class TravelRepository(context: Context) {
             }
 
         val base = TravelEstimator.base(mode, raw.distanceMeters, raw.durationSeconds)
-        val observed = observedMinutes(from.id, to.id)
+        val trips = observedTrips(from.id, to.id)
+        // drumurile reale nu știu cu ce te-ai deplasat: le socotim făcute cu modul ales pentru drumul ăsta
+        val usual = md.utm.digitalmirror.data.prefs.TravelPrefs.modeFor(context, from.id, to.id)
+        val observed = if (mode == usual) trips.map { it.minutes }.filter { TravelEstimator.plausible(base, it) } else emptyList()
+        val spread = TravelEstimator.spread(base, observed)
         return Result.success(
             Outcome(
-                estimate = TravelEstimator.learn(base, observed),
+                estimate = TravelEstimator.Estimate(spread.typical, if (observed.isEmpty()) base.source else TravelEstimator.Source.LEARNED),
                 baseMinutes = base.minutes,
                 observedCount = observed.size,
                 distanceMeters = raw.distanceMeters,
-                points = raw.points
+                points = raw.points,
+                spread = spread,
+                trips = trips.sortedByDescending { it.departAt }
             )
         )
     }
 
     // drumurile reale A → B din vizitele ultimelor 60 de zile
-    private suspend fun observedMinutes(fromId: Long, toId: Long): List<Int> {
+    private suspend fun observedTrips(fromId: Long, toId: Long): List<TravelEstimator.Trip> {
         val now = System.currentTimeMillis()
         val since = now - 60L * 24 * 60 * 60_000L
         val visits = db.presenceLogDao().overlapping(since, now + 1).map {
@@ -109,6 +119,5 @@ class TravelRepository(context: Context) {
         }
         return TravelEstimator.observedTrips(PresenceRules.clean(visits))
             .filter { it.fromId == fromId && it.toId == toId }
-            .map { it.minutes }
     }
 }

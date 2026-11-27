@@ -18,6 +18,24 @@ object TravelPrefs {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY_MODE, mode.name).apply()
     }
 
+    // același mod în ambele sensuri: Acasă → Facultate și Facultate → Acasă
+    private fun routeKey(a: Long, b: Long) = "route_${minOf(a, b)}_${maxOf(a, b)}"
+
+    /** Modul ales pentru un anumit drum (de ex. Acasă ↔ Facultate cu autobuzul); null = modul obișnuit. */
+    fun routeMode(context: Context, from: Long, to: Long): TravelEstimator.Mode? =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(routeKey(from, to), null)
+            ?.let { name -> TravelEstimator.Mode.entries.firstOrNull { it.name == name } }
+
+    fun setRouteMode(context: Context, from: Long, to: Long, mode: TravelEstimator.Mode?) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().apply {
+            if (mode == null) remove(routeKey(from, to)) else putString(routeKey(from, to), mode.name)
+        }.apply()
+    }
+
+    /** Modul cu care se planifică drumul: cel ales pentru el, altfel cel obișnuit. */
+    fun modeFor(context: Context, from: Long, to: Long): TravelEstimator.Mode =
+        routeMode(context, from, to) ?: mode(context)
+
     /** Locul de unde pleci de obicei (acasă); null = nealeasă. */
     fun homePlaceId(context: Context): Long? =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(KEY_HOME, -1L).takeIf { it > 0 }
