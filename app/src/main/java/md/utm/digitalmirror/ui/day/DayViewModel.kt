@@ -345,7 +345,7 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
     val dayWindow: StateFlow<Pair<Int, Int>> by lazy {
         combine(_date, overrides) { d, _ -> d }
             .mapLatest { DayBusy.window(app, LocalDate.parse(it)) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SleepPlanner.activeWindow(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SleepPlanner.activeWindow(emptyList(), habit = md.utm.digitalmirror.data.prefs.SleepPrefs.habit(app)))
     }
 
     val sleep: StateFlow<SleepUi?> by lazy {
@@ -513,7 +513,7 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
                 if (record?.sleepSource == "MANUAL") return@mapLatest null
                 if (sleepPrefs.getString(KEY_DISMISSED, null) == date) return@mapLatest null
                 val saved = record?.let { SleepPlanner.Night(it.sleepMinutes, it.bedtimeMinute, it.wakeMinute) }
-                SleepPlanner.check(saved, DayBusy.recentNights(app, day))
+                SleepPlanner.check(saved, DayBusy.recentNights(app, day), md.utm.digitalmirror.data.prefs.SleepPrefs.habit(app))
             }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     }
 

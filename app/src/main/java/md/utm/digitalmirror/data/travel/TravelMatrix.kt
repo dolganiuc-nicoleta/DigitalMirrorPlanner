@@ -9,6 +9,7 @@ import md.utm.digitalmirror.data.entity.DayOverride
 import md.utm.digitalmirror.domain.MealPlanner
 import md.utm.digitalmirror.data.prefs.MealPrefs
 import md.utm.digitalmirror.data.prefs.TravelPrefs
+import md.utm.digitalmirror.data.prefs.SleepPrefs
 import md.utm.digitalmirror.domain.Availability
 import md.utm.digitalmirror.domain.DaySkeleton
 import md.utm.digitalmirror.domain.SleepPlanner
@@ -121,13 +122,13 @@ object DayBusy {
 
     /** Intervalul pentru lucruri flexibile în ziua dată (după trezire și dimineață, până la culcare). */
     suspend fun window(context: Context, date: LocalDate): Pair<Int, Int> =
-        SleepPlanner.activeWindow(recentNights(context, date), override(context, date)?.wakeMinute)
+        SleepPlanner.activeWindow(recentNights(context, date), override(context, date)?.wakeMinute, SleepPrefs.habit(context))
 
     /** Trezirea propusă pentru ziua dată, cu ora aleasă de tine (dacă există) și micul dejun al zilei. */
     suspend fun sleepPlan(context: Context, date: LocalDate, firstStart: Int?): SleepPlanner.Plan {
         val breakfast = meals(context, date)
             .firstOrNull { it.kind == MealPlanner.Kind.BREAKFAST && it.enabled }?.minutes ?: 0
-        return SleepPlanner.plan(recentNights(context, date), firstStart, breakfast, override(context, date)?.wakeMinute)
+        return SleepPlanner.plan(recentNights(context, date), firstStart, breakfast, override(context, date)?.wakeMinute, SleepPrefs.habit(context))
     }
 
     /** Blocurile fixe din Setări, cu locul lor. */

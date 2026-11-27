@@ -50,20 +50,38 @@ object SleepPlanner {
      * @param breakfastMinutes micul dejun, dacă e pornit; se adaugă la dimineață
      * @param chosenWake ora de trezire aleasă de tine pentru ziua asta; are prioritate
      */
-    fun plan(nights: List<Night>, firstStart: Int?, breakfastMinutes: Int = 0, chosenWake: Int? = null): Plan {
+    /**
+     * Ritmul spus de tine la configurarea inițială: de la el pornim până se adună destule nopți ([MIN_NIGHTS]).
+     * [bed] poate fi peste 24:00 (0:30 = 24:30).
+     */
+    data class Habit(
+        val wake: Int = DEFAULT_WAKE,
+        val bed: Int = DEFAULT_BEDTIME,
+        val sleepMinutes: Int = DEFAULT_SLEEP_MINUTES
+    ) {
+        companion object {
+            /** Din orele spuse de tine; somnul e diferența dintre ele (fără adormirea), dacă e credibil. */
+            fun of(wake: Int, bed: Int): Habit {
+                val sleep = (((wake - bed - FALL_ASLEEP_MINUTES) % DAY) + DAY) % DAY
+                return Habit(wake, if (bed < 12 * 60) bed + DAY else bed, sleep.takeIf { it in 4 * 60..12 * 60 } ?: DEFAULT_SLEEP_MINUTES)
+            }
+        }
+    }
+
+    fun plan(nights: List<Night>, firstStart: Int?, breakfastMinutes: Int = 0, chosenWake: Int? = null, habit: Habit = Habit()): Plan {
         val good = nights.filter(::plausible)
         val sleeps = good.mapNotNull { it.sleepMinutes }
         val wakes = good.mapNotNull { it.wake }
         val beds = good.mapNotNull { it.bedtime }.map { if (it < 12 * 60) it + DAY else it }   // 0:30 → 24:30
 
         val enough = sleeps.size >= MIN_NIGHTS
-        val sleep = if (enough) median(sleeps) else DEFAULT_SLEEP_MINUTES
+        val sleep = if (enough) median(sleeps) else habit.sleepMinutes
         val usualWake = if (wakes.size >= MIN_NIGHTS) median(wakes) else null
         val usualBed = if (beds.size >= MIN_NIGHTS) median(beds) else null
 
         if (chosenWake != null) return Plan(chosenWake, sleep, Reason.CHOSEN, sleeps.size, usualWake, usualBed)
 
-        val preferred = usualWake ?: DEFAULT_WAKE
+        val preferred = usualWake ?: habit.wake
         val latest = firstStart?.let { it - MORNING_MINUTES - breakfastMinutes }
 
         return if (latest != null && latest < preferred) {
@@ -79,12 +97,12 @@ object SleepPlanner {
      * mai devreme și nu te ține treaz; doar lucrurile fixe (cursuri, programări) pot muta trezirea.
      * Fără destule nopți: 8:20–22:00.
      */
-    fun activeWindow(nights: List<Night>, chosenWake: Int? = null): Pair<Int, Int> {
+    fun activeWindow(nights: List<Night>, chosenWake: Int? = null, habit: Habit = Habit()): Pair<Int, Int> {
         val good = nights.filter(::plausible)
         val wakes = good.mapNotNull { it.wake }
         val beds = good.mapNotNull { it.bedtime }.map { if (it < 12 * 60) it + DAY else it }
-        val wake = chosenWake ?: if (wakes.size >= MIN_NIGHTS) median(wakes) else DEFAULT_WAKE
-        val bed = if (beds.size >= MIN_NIGHTS) median(beds) else DEFAULT_BEDTIME
+        val wake = chosenWake ?: if (wakes.size >= MIN_NIGHTS) median(wakes) else habit.wake
+        val bed = if (beds.size >= MIN_NIGHTS) median(beds) else habit.bed
         val start = wake + MORNING_MINUTES
         // perna de seară: nimic flexibil în ultima oră dinainte de culcare
         val end = (bed - WIND_DOWN_MINUTES).coerceAtMost(DAY)
@@ -115,15 +133,15 @@ object SleepPlanner {
      * Noaptea de confirmat: cea salvată de aplicația de somn, dacă e credibilă;
      * altfel ritmul tău obișnuit (sau 23:00–7:00), cu bucata salvată arătată separat.
      */
-    fun check(saved: Night?, recent: List<Night>): Check {
+    fun check(saved: Night?, recent: List<Night>, habit: Habit = Habit()): Check {
         if (saved != null && plausible(saved) && saved.bedtime != null && saved.wake != null) {
             return Check(saved.bedtime, saved.wake, fromHealth = true)
         }
         val good = recent.filter(::plausible)
         val beds = good.mapNotNull { it.bedtime }.map { if (it < 12 * 60) it + DAY else it }
         val wakes = good.mapNotNull { it.wake }
-        val bed = (if (beds.size >= MIN_NIGHTS) median(beds) else DEFAULT_BEDTIME) % DAY
-        val wake = if (wakes.size >= MIN_NIGHTS) median(wakes) else 7 * 60
+        val bed = (if (beds.size >= MIN_NIGHTS) median(beds) else habit.bed) % DAY
+        val wake = if (wakes.size >= MIN_NIGHTS) median(wakes) else habit.wake
         val partial = saved?.takeIf { it.sleepMinutes != null }
         return Check(bed, wake, fromHealth = false, partialHealth = partial)
     }

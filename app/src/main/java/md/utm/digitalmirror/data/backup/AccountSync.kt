@@ -100,6 +100,7 @@ object AccountSync {
         TravelPrefs.setHomePlaceId(context, null)
         TravelPrefs.setPrepMinutes(context, TravelPrefs.DEFAULT_PREP_MINUTES)
         MealPrefs.reset(context)
+        md.utm.digitalmirror.data.prefs.SleepPrefs.reset(context)
 
         // fără locuri, zonele de detectare se scot
         runCatching { GeofenceManager.sync(context) }

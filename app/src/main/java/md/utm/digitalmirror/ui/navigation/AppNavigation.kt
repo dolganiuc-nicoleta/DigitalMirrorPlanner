@@ -258,7 +258,7 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     navController.navigate(Routes.DAY) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }   // înapoi nu mai duce la configurare
                     }
-                })
+                }, onOpenPlaces = { navController.navigate(Routes.places()) })
             }
 
             // Oglinda: statistici, obiective, capsule
