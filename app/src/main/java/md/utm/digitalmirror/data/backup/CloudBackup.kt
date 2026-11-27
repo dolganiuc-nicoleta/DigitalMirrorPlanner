@@ -40,7 +40,7 @@ object CloudBackup {
         }
     }
 
-    private class Response(val code: Int, val body: ByteArray)
+    internal class Response(val code: Int, val body: ByteArray)
 
     suspend fun info(): Info = withContext(Dispatchers.IO) {
         val r = send("GET", "/backup/info", null)
@@ -89,7 +89,7 @@ object CloudBackup {
     }
 
     /** Dacă serverul zice 401 (token expirat), cerem unul nou o singură dată. */
-    private suspend fun send(method: String, path: String, body: ByteArray?): Response {
+    internal suspend fun send(method: String, path: String, body: ByteArray?): Response {
         if (!CloudConfig.isConfigured) throw BackupManager.BackupException("Serverul nu este configurat.")
         val first = call(method, path, token(false), body)
         if (first.code != 401) return first

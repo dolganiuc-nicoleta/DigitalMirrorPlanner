@@ -24,6 +24,7 @@ import md.utm.digitalmirror.domain.WeekPlanner
 import md.utm.digitalmirror.domain.WeekTaskParser
 import md.utm.digitalmirror.ui.components.formatDuration
 import md.utm.digitalmirror.ui.theme.Fraunces
+import md.utm.digitalmirror.data.ai.AiPrefs
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -95,6 +96,9 @@ fun WeekScreen(
     val month by vm.month.collectAsState()
     val agenda by vm.agenda.collectAsState()
     val monthDots by vm.monthDots.collectAsState()
+    val board by vm.board.collectAsState()
+    val ai by vm.ai.collectAsState()
+    var askConsent by remember { mutableStateOf(false) }
     var showSkeleton by rememberSaveable { mutableStateOf(false) }
     var showScenario by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
@@ -142,19 +146,42 @@ fun WeekScreen(
                     ) { Text("Lună") }
                 }
             }
-            item {
-                if (view == WeekViewModel.View.WEEK) {
-                    WeekStrip(
+            if (view == WeekViewModel.View.WEEK) {
+                // --- tabla: săptămâna asta, următoarea sau cea de după, zi cu zi ---
+                item {
+                    BoardHeader(
                         weekStart = state.weekStart,
-                        days = state.days,
-                        selected = selectedDate,
-                        canPrev = state.offset > 0,
-                        canNext = state.offset < 1,
-                        onPrev = { vm.setOffset(0) },
-                        onNext = { vm.setOffset(1) },
-                        onSelect = vm::select
+                        offset = state.offset,
+                        onPrev = { vm.setOffset(state.offset - 1) },
+                        onNext = { vm.setOffset(state.offset + 1) },
+                        aiAvailable = vm.aiAvailable,
+                        aiLoading = ai == WeekViewModel.AiUi.Loading,
+                        onBalance = { if (AiPrefs.hasConsent(context)) vm.balance() else askConsent = true }
                     )
-                } else {
+                }
+                item {
+                    val week = board.filter { !it.date.isBefore(state.weekStart) && it.date.isBefore(state.weekStart.plusDays(7)) }
+                    if (week.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    } else {
+                        WeekBoardView(
+                            days = week,
+                            onAdd = vm::addToDay,
+                            onMove = vm::moveToDay,
+                            onCancel = vm::cancelActivity,
+                            onOpen = onOpenActivity
+                        )
+                    }
+                }
+                item {
+                    Text(
+                        "Ține apăsat pe o sarcină și trage-o în altă zi. Atinge-o ca s-o deschizi sau s-o anulezi.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                item {
                     MonthGrid(
                         month = month,
                         selected = selectedDate,
@@ -164,19 +191,19 @@ fun WeekScreen(
                         onSelect = vm::select
                     )
                 }
-            }
-            item {
-                SelectedDayHeader(
-                    date = selectedDate,
-                    cell = state.days.firstOrNull { it.date == selectedDate },
-                    dayOff = agenda?.dayOff == true,
-                    onOpenDay = { onOpenDay(selectedDate) }
-                )
-            }
-            item {
-                val items = agenda?.takeIf { it.date == selectedDate }?.items.orEmpty()
-                val empty = if (agenda?.dayOff == true) "Zi liberă: nimic planificat." else "Nimic planificat în ziua asta."
-                if (view == WeekViewModel.View.WEEK) DayAgendaTimeline(items, empty, onOpenActivity) else DayAgendaList(items, empty, onOpenActivity)
+                item {
+                    SelectedDayHeader(
+                        date = selectedDate,
+                        cell = state.days.firstOrNull { it.date == selectedDate },
+                        dayOff = agenda?.dayOff == true,
+                        onOpenDay = { onOpenDay(selectedDate) }
+                    )
+                }
+                item {
+                    val items = agenda?.takeIf { it.date == selectedDate }?.items.orEmpty()
+                    val empty = if (agenda?.dayOff == true) "Zi liberă: nimic planificat." else "Nimic planificat în ziua asta."
+                    DayAgendaList(items, empty, onOpenActivity)
+                }
             }
 
             if (view == WeekViewModel.View.WEEK) {
@@ -348,6 +375,21 @@ fun WeekScreen(
             }
         }
     }
+
+    // AI: acordul (o singură dată) și propunerile
+    if (askConsent) {
+        AiConsentDialog(
+            onAccept = { AiPrefs.setConsent(context, true); askConsent = false; vm.balance() },
+            onDismiss = { askConsent = false }
+        )
+    }
+    AiResultSheet(
+        ai = ai,
+        onAccept = vm::acceptMove,
+        onReject = vm::dropMove,
+        onAcceptAll = vm::acceptAllMoves,
+        onDismiss = vm::dismissAi
+    )
 
     if (adding) {
         NewTaskDialog(

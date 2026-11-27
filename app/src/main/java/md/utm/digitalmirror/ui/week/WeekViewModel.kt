@@ -35,6 +35,7 @@ import md.utm.digitalmirror.domain.SlotRecommender
 import md.utm.digitalmirror.domain.TitleKey
 import md.utm.digitalmirror.domain.WeekPlanner
 import md.utm.digitalmirror.domain.WeekScenario
+import md.utm.digitalmirror.domain.WeekBoard
 import md.utm.digitalmirror.reminder.ActivityReminders
 import java.time.LocalDate
 import java.time.LocalTime
@@ -247,7 +248,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         selected.value = date
         shownMonth.value = YearMonth.from(date)
         val weeks = ChronoUnit.WEEKS.between(weekStart(0), PeriodReport.weekStart(date)).toInt()
-        if (weeks in 0..1) offset.value = weeks
+        if (weeks in 0..2) offset.value = weeks
     }
 
     fun setView(value: View) {
@@ -255,11 +256,232 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
         // banda arată doar săptămâna asta și următoarea: altfel revenim la azi
         if (value == View.WEEK) {
             val weeks = ChronoUnit.WEEKS.between(weekStart(0), PeriodReport.weekStart(selected.value)).toInt()
-            if (weeks !in 0..1) select(LocalDate.now())
+            if (weeks !in 0..2) select(LocalDate.now())
         }
     }
 
     fun shiftMonth(delta: Int) { shownMonth.value = shownMonth.value.plusMonths(delta.toLong()) }
+
+
+    // ---- tabla: săptămâna asta, următoarea și cea de după, zi cu zi ----
+
+    /** Un lucru de pe tablă: o activitate (se mută, se anulează) sau ceva fix (curs, eveniment; doar se vede). */
+    data class BoardItem(
+        val key: String,
+        val activityId: Long?,
+        val title: String,
+        val minutes: Int,
+        val start: Int?,
+        val kind: Kind,
+        val state: String? = null,
+        val colorHex: String? = null,
+        val movable: Boolean = false,
+        val allDay: Boolean = false
+    )
+
+    data class BoardDay(
+        val date: LocalDate,
+        val items: List<BoardItem>,
+        val capacity: Int,                // cât încape realist pentru sarcinile tale
+        val fixedMinutes: Int,            // cursuri, programări, evenimente
+        val dayOff: Boolean
+    ) {
+        /** Sarcinile tale din zi (și cele deja făcute: și ele au ocupat ziua). */
+        val plannedMinutes: Int get() = items.filter { it.kind == Kind.ACTIVITY }.sumOf { it.minutes }
+        val load: WeekBoard.Load get() = WeekBoard.load(plannedMinutes, capacity)
+    }
+
+    private val boardStart = weekStart(0)
+    private val boardRefresh = MutableStateFlow(0)
+
+    /** Toate cele 21 de zile; ecranul arată săptămâna aleasă, iar AI-ul le vede pe toate. */
+    val board: StateFlow<List<BoardDay>> =
+        combine(
+            repo.observeActivitiesInRange(boardStart.toString(), boardStart.plusDays(BOARD_DAYS - 1L).toString()),
+            availability.observeRules(),
+            availability.observeDaysOff(),
+            repo.observeCategories(),
+            boardRefresh
+        ) { activities, rules, daysOff, categories, _ ->
+            Triple(activities, rules.map {
+                Availability.Rule(it.id, it.title, it.daysMask, it.startMinute, it.endMinute, it.travelBeforeMinutes, it.travelAfterMinutes, it.placeId)
+            }, daysOff.map { it.date }.toSet()) to categories
+        }.mapLatest { (data, categories) -> buildBoard(data.first, data.second, data.third, categories) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private suspend fun buildBoard(
+        activities: List<Activity>,
+        rules: List<Availability.Rule>,
+        daysOff: Set<String>,
+        categories: List<Category>
+    ): List<BoardDay> {
+        val today = LocalDate.now()
+        val colors = categories.associate { it.id to md.utm.digitalmirror.ui.components.CategoryColor.hex(it) }
+        val totals = if (analysisOn) repo.dailyTotals(today.toString()).filter { it.date.toString() !in daysOff } else emptyList()
+        val calendar = CalendarReader.hasPermission(app)
+
+        return (0 until BOARD_DAYS).map { i ->
+            val date = boardStart.plusDays(i.toLong())
+            val dayOff = date.toString() in daysOff
+            val items = mutableListOf<BoardItem>()
+
+            activities.filter { it.date == date.toString() && it.state != "POSTPONED" && it.state != "ABANDONED" }.forEach { a ->
+                items += BoardItem(
+                    key = "a${a.id}", activityId = a.id, title = a.title,
+                    minutes = a.actualMinutes ?: a.userEstimatedMinutes ?: a.estimatedMinutes ?: 30,
+                    start = a.plannedStartMinute, kind = Kind.ACTIVITY, state = a.state,
+                    colorHex = a.categoryId?.let(colors::get),
+                    movable = a.state == "PLANNED" && !date.isBefore(today)
+                )
+            }
+            val fixed = mutableListOf<Pair<Int, Int>>()
+            Availability.blocksFor(date, rules, daysOff).forEach { b ->
+                items += BoardItem("f${b.ruleId}", null, b.title, b.end - b.start, b.start, Kind.FIXED)
+                fixed += b.start to b.end
+            }
+            if (calendar) {
+                CalendarReader.eventsFor(app, date).forEach { e ->
+                    items += BoardItem(
+                        "e${e.id}-${e.startMinute}", null, e.title,
+                        if (e.allDay) 0 else e.endMinute - e.startMinute,
+                        if (e.allDay) null else e.startMinute, Kind.EVENT, allDay = e.allDay
+                    )
+                    if (e.busy && !e.allDay) fixed += e.startMinute to e.endMinute
+                }
+            }
+
+            val fixedMinutes = WeekBoard.fixedMinutes(fixed)
+            val (wake, bed) = DayBusy.window(app, date)
+            val typical = if (analysisOn) DayLoad.compute(0, totals, date).typicalMinutes else null
+            val budget = WeekPlanner.DayInput(date, emptyList(), typicalMinutes = typical).budget
+            BoardDay(
+                date = date,
+                items = items.sortedWith(compareBy({ it.start ?: Int.MAX_VALUE }, { it.kind.ordinal })),
+                capacity = if (dayOff) 0 else WeekBoard.capacity(budget, bed - wake, fixedMinutes),
+                fixedMinutes = fixedMinutes,
+                dayOff = dayOff
+            )
+        }
+    }
+
+    /** Ce scrii într-o zi („licență 2h, sală 1h”): una sau mai multe activități pe ziua aceea. */
+    fun addToDay(date: LocalDate, text: String) = viewModelScope.launch {
+        val parsed = md.utm.digitalmirror.domain.QuickCapture.parse(text, date).filter { it.title.isNotBlank() }
+        if (parsed.isEmpty()) return@launch
+        val categories = repo.observeCategories().first()
+        val known = repo.observeActivitiesInRange("0000-01-01", "9999-12-31").first().mapNotNull { a ->
+            a.categoryId?.let { CategoryGuess.Known(a.titleKey ?: TitleKey.of(a.title), it) }
+        }
+        parsed.forEach { p ->
+            val minutes = p.minutes ?: DEFAULT_TASK_MINUTES
+            val activity = Activity(
+                title = p.title.trim(),
+                categoryId = CategoryGuess.guess(p.title, categories.map { CategoryGuess.Cat(it.id, it.name) }, known),
+                date = date.toString(),
+                plannedStartMinute = p.startMinute,
+                userGuessMinutes = p.minutes,
+                estimatedMinutes = null,
+                userEstimatedMinutes = minutes,
+                actualMinutes = null
+            )
+            val id = repo.addActivity(activity)
+            ActivityReminders.onActivityPlanned(app, activity.copy(id = id))
+        }
+    }
+
+    /** Tras pe altă zi: ora rămâne (dacă avea), doar ziua se schimbă. */
+    fun moveToDay(activityId: Long, date: LocalDate) = viewModelScope.launch { moveNow(activityId, date) }
+
+    private suspend fun moveNow(activityId: Long, date: LocalDate) {
+        val fresh = repo.getActivity(activityId) ?: return
+        val from = LocalDate.parse(fresh.date)
+        if (date == from) return
+        val today = LocalDate.now()
+        // mutată după ce i-a venit ziua: e o amânare; dintr-o zi viitoare: doar o replanificare
+        repo.postponeActivity(activityId, date.toString(), countAsPostponed = !from.isAfter(today) && date.isAfter(from))
+        val moved = repo.getActivity(activityId) ?: return
+        ActivityReminders.onActivityClosed(app, moved.id)
+        ActivityReminders.onActivityPlanned(app, moved)
+    }
+
+    /** „Anulează”: nu se mai face; rămâne în istoric ca abandonată. */
+    fun cancelActivity(activityId: Long) = viewModelScope.launch {
+        repo.closeActivity(activityId, null, "ABANDONED", null)
+        ActivityReminders.onActivityClosed(app, activityId)
+    }
+
+    // ---- „✨ Echilibrează” cu AI ----
+
+    sealed interface AiUi {
+        data object Idle : AiUi
+        data object Loading : AiUi
+        data class Done(val summary: String, val moves: List<AiMove>) : AiUi
+        data class Error(val message: String) : AiUi
+    }
+
+    /** O propunere, cu tot ce trebuie arătat: ce, de unde, unde și de ce. */
+    data class AiMove(val activityId: Long, val title: String, val from: LocalDate, val to: LocalDate, val reason: String)
+
+    private val _ai = MutableStateFlow<AiUi>(AiUi.Idle)
+    val ai: StateFlow<AiUi> = _ai
+
+    val aiAvailable: Boolean get() = md.utm.digitalmirror.data.ai.AiBalancer.isAvailable
+
+    /** Trimite zilele de azi încolo (din cele 3 săptămâni) și dorința din simulare, dacă e una. */
+    fun balance() {
+        if (_ai.value == AiUi.Loading) return
+        val today = LocalDate.now()
+        val days = board.value.filter { !it.date.isBefore(today) }
+        if (days.isEmpty()) return
+        _ai.value = AiUi.Loading
+        viewModelScope.launch {
+            val byKey = days.flatMap { d -> d.items.filter { it.kind == Kind.ACTIVITY }.map { it.key to (it to d.date) } }.toMap()
+            val request = days.map { d ->
+                md.utm.digitalmirror.data.ai.AiBalancer.Day(
+                    date = d.date.toString(),
+                    capacityMinutes = d.capacity,
+                    fixedMinutes = d.fixedMinutes,
+                    dayOff = d.dayOff,
+                    items = d.items.filter { it.kind == Kind.ACTIVITY }
+                        .map { md.utm.digitalmirror.data.ai.AiBalancer.Item(it.key, it.title, it.minutes, it.movable) }
+                )
+            }
+            _ai.value = try {
+                val result = md.utm.digitalmirror.data.ai.AiBalancer.balance(request, scenarioText.value)
+                AiUi.Done(
+                    result.summary,
+                    result.moves.mapNotNull { m ->
+                        val (item, from) = byKey[m.itemId] ?: return@mapNotNull null
+                        val to = runCatching { LocalDate.parse(m.toDate) }.getOrNull() ?: return@mapNotNull null
+                        AiMove(item.activityId ?: return@mapNotNull null, item.title, from, to, m.reason)
+                    }
+                )
+            } catch (e: md.utm.digitalmirror.data.ai.AiBalancer.AiException) {
+                AiUi.Error(e.message ?: "AI-ul nu a răspuns.")
+            } catch (e: Exception) {
+                AiUi.Error("Răspunsul AI-ului nu a putut fi citit.")
+            }
+        }
+    }
+
+    fun acceptMove(move: AiMove) = viewModelScope.launch {
+        moveNow(move.activityId, move.to)
+        dropMove(move)
+    }
+
+    fun acceptAllMoves() = viewModelScope.launch {
+        val current = _ai.value as? AiUi.Done ?: return@launch
+        current.moves.forEach { moveNow(it.activityId, it.to) }
+        _ai.value = AiUi.Idle
+    }
+
+    fun dropMove(move: AiMove) {
+        val current = _ai.value as? AiUi.Done ?: return
+        val left = current.moves - move
+        _ai.value = if (left.isEmpty()) AiUi.Idle else current.copy(moves = left)
+    }
+
+    fun dismissAi() { _ai.value = AiUi.Idle }
 
     // ---- calculul planului ----
 
@@ -448,9 +670,9 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun setOffset(value: Int) {
-        offset.value = value.coerceIn(0, 1)
+        offset.value = value.coerceIn(0, 2)
         // ziua aleasă trece în săptămâna arătată: azi, sau lunea săptămânii viitoare
-        select(if (offset.value == 0) LocalDate.now() else weekStart(1))
+        select(if (offset.value == 0) LocalDate.now() else weekStart(offset.value))
     }
     fun setScope(value: Scope) { scope.value = value }
     fun setScenario(text: String) { scenarioText.value = text }
@@ -551,5 +773,7 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val MIN_ACTIVITIES_FOR_RATE = 8
+        const val BOARD_DAYS = 21          // săptămâna asta, următoarea și cea de după
+        const val DEFAULT_TASK_MINUTES = 60
     }
 }
