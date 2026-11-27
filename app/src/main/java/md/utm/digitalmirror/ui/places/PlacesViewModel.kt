@@ -119,12 +119,23 @@ class PlacesViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _search = MutableStateFlow(SearchState())
     val search: StateFlow<SearchState> = _search
 
-    fun save(place: Place) = viewModelScope.launch {
-        if (place.id == 0L) dao.insert(place)
+    /** Locul de unde pleci de obicei (acasă), ca lista și editorul să-l arate. */
+    private val _homeId = MutableStateFlow(TravelPrefs.homePlaceId(app))
+    val homeId: StateFlow<Long?> = _homeId
+
+    /** Salvează locul; [isHome] îl face (sau nu mai) locul de unde pleci de obicei. */
+    fun save(place: Place, isHome: Boolean = place.id != 0L && place.id == _homeId.value) = viewModelScope.launch {
+        val id = if (place.id == 0L) dao.insert(place)
         else {
             dao.update(place)
             routeDao.deleteForPlace(place.id)     // locul s-ar fi putut muta, drumurile vechi nu mai sunt bune
+            place.id
         }
+        when {
+            isHome -> TravelPrefs.setHomePlaceId(app, id)
+            _homeId.value == id -> TravelPrefs.setHomePlaceId(app, null)
+        }
+        _homeId.value = TravelPrefs.homePlaceId(app)
         GeofenceManager.sync(app)      // zonele urmăresc locurile salvate
     }
 
