@@ -44,6 +44,7 @@ import md.utm.digitalmirror.data.health.HealthSync
 fun SettingsScreen(
     onBack: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
+    onOpenCategories: () -> Unit = {},
     vm: SettingsViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -189,40 +190,13 @@ fun SettingsScreen(
                 SectionTitle("Categorii")
             }
             item {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newCategory,
-                        onValueChange = { newCategory = it },
-                        label = { Text("Categorie nouă") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Button(
-                        onClick = {
-                            vm.addCategory(newCategory)
-                            newCategory = ""
-                        },
-                        enabled = newCategory.isNotBlank()
-                    ) { Text("Adaugă") }
-                }
-            }
-            if (categories.isEmpty()) {
-                item { Hint("Încă nu ai categorii") }
-            }
-            items(categories, key = { it.id }) { category ->
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(start = 16.dp, end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(category.name, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { renaming = category }) { Text("Redenumește") }
-                        TextButton(onClick = { deleting = category }) {
-                            Text("Șterge", color = MaterialTheme.colorScheme.error)
-                        }
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Hint(
+                            if (categories.isEmpty()) "Încă nu ai categorii."
+                            else "Ai ${categories.size} categorii. Le schimbi culoarea și iconița, le redenumești sau le unești pe cele duplicate."
+                        )
+                        OutlinedButton(onClick = onOpenCategories) { Text("Gestionează categoriile") }
                     }
                 }
             }

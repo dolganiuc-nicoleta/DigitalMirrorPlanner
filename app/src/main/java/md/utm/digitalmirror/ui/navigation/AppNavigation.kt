@@ -79,6 +79,7 @@ object Routes {
     const val ACTIVITY = "activity/{id}"
     const val MIRROR = "mirror"
     const val CAPTURE = "capture"
+    const val CATEGORIES = "categories"
 
     fun closing(date: String) = "closing/$date"
     fun activity(id: Long) = "activity/$id"
@@ -355,14 +356,20 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 ProfileScreen(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenPlaces = { navController.navigate(Routes.places()) },
+                    onOpenCategories = { navController.navigate(Routes.CATEGORIES) },
                     onOpenAuth = { navController.navigate(Routes.AUTH) }
                 )
+            }
+
+            composable(Routes.CATEGORIES) {
+                md.utm.digitalmirror.ui.categories.CategoriesScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.SETTINGS) {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
-                    onOpenPlaces = { navController.navigate(Routes.places()) }
+                    onOpenPlaces = { navController.navigate(Routes.places()) },
+                    onOpenCategories = { navController.navigate(Routes.CATEGORIES) }
                 )
             }
 
@@ -405,7 +412,9 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     onBack = { navController.popBackStack() },
                     // editarea se face în ziua activității, cu tot ce știe ziua (cursuri, drumuri, propuneri)
                     onEdit = { date ->
-                        openTab(Routes.DAY)
+                        // întâi închidem pagina activității; altfel Azi și-ar reface starea salvată cu ea deasupra
+                        navController.popBackStack()
+                        if (navController.currentDestination?.route != Routes.DAY) openTab(Routes.DAY)
                         runCatching {
                             navController.getBackStackEntry(Routes.DAY).savedStateHandle.apply {
                                 set(OPEN_DATE, date)

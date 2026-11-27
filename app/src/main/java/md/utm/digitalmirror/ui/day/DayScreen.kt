@@ -1666,6 +1666,7 @@ private fun ActivityDialog(
 
     // categoria nou creată se alege singură când apare în listă
     var addingCategory by remember { mutableStateOf(false) }
+    var allCategories by remember { mutableStateOf(false) }   // „Altele”: toate categoriile, nu doar cele mai folosite
     var pendingCategory by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(categories, pendingCategory) {
         val name = pendingCategory ?: return@LaunchedEffect
@@ -1728,15 +1729,28 @@ private fun ActivityDialog(
 
             // categoria: cipuri, cu „+ Nouă” la capăt
             FormSection("Categorie") {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    categories.forEach { c ->
+                // cele mai folosite întâi (lista vine ordonată); restul sub „Altele”
+                val top = categories.take(TOP_CATEGORIES)
+                val shown = if (allCategories) categories
+                else top + listOfNotNull(selectedCategory?.takeIf { s -> top.none { it.id == s.id } })
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    shown.forEach { c ->
+                        val tint = categoryColor(md.utm.digitalmirror.ui.components.CategoryColor.hex(c))
                         FilterChip(
                             selected = selectedCategory?.id == c.id,
                             onClick = { selectedCategory = if (selectedCategory?.id == c.id) null else c },
                             label = { Text(c.name) },
                             leadingIcon = {
-                                Box(Modifier.size(10.dp).clip(CircleShape).background(categoryColor(md.utm.digitalmirror.ui.components.CategoryColor.hex(c))))
+                                val icon = md.utm.digitalmirror.ui.components.CategoryIcons.of(c)
+                                if (icon != null) Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp))
+                                else Box(Modifier.size(10.dp).clip(CircleShape).background(tint))
                             }
+                        )
+                    }
+                    if (categories.size > TOP_CATEGORIES) {
+                        AssistChip(
+                            onClick = { allCategories = !allCategories },
+                            label = { Text(if (allCategories) "Mai puține" else "Altele (${categories.size - TOP_CATEGORIES})") }
                         )
                     }
                     AssistChip(
@@ -2267,6 +2281,9 @@ private val dayFormatter = DateTimeFormatter.ofPattern("EEEE", ro)       // „s
 private val dateFormatter = DateTimeFormatter.ofPattern("d MMMM", ro)    // „3 octombrie”
 
 private fun formatMinute(m: Int): String = "%02d:%02d".format((m / 60) % 24, m % 60)
+
+/** Câte categorii arată formularul înainte de „Altele” (cele mai folosite). */
+private const val TOP_CATEGORIES = 5
 /** O secțiune a formularului: o etichetă mică și conținutul ei. */
 @Composable
 private fun FormSection(label: String, content: @Composable ColumnScope.() -> Unit) {

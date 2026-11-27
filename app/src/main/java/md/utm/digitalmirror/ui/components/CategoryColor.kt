@@ -9,6 +9,9 @@ import md.utm.digitalmirror.data.entity.Category
 object CategoryColor {
     private const val DEFAULT = "#378ADD"
 
+    /** Culorile din care alegi. Albastrul ales de tine e puțin altul decât cel implicit, ca să nu fie înlocuit. */
+    val CHOICES = listOf("#3B8FE0", "#2E9E6B", "#E07B39", "#8A5CD1", "#D1508A", "#1E9AA8", "#C9A227", "#D9534F", "#6B7A8F", "#8D6E63")
+
     private val PALETTE = listOf(
         "#378ADD", // albastru
         "#2E9E6B", // verde

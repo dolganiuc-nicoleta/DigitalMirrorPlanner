@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,7 +33,8 @@ import md.utm.digitalmirror.ui.theme.ThemeSettings
 fun ProfileScreen(
     onOpenSettings: () -> Unit,
     onOpenAuth: () -> Unit,
-    onOpenPlaces: () -> Unit = {}
+    onOpenPlaces: () -> Unit = {},
+    onOpenCategories: () -> Unit = {}
 ) {
     val context = LocalContext.current
     // e-mailul se schimbă singur la autentificare și la ieșire din cont
@@ -114,6 +116,30 @@ fun ProfileScreen(
                             Text("Locurile și drumurile tale", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                             Text(
                                 "Harta, cât durează fiecare drum și cum te deplasezi",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+                    }
+                }
+            }
+
+            // categoriile: culori, iconițe, dubluri
+            item {
+                Card(onClick = onOpenCategories, modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.Category, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Categoriile mele", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                            Text(
+                                "Culori, iconițe și dublurile de unit",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
