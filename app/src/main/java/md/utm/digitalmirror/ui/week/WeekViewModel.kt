@@ -677,7 +677,8 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
     fun setScope(value: Scope) { scope.value = value }
     fun setScenario(text: String) { scenarioText.value = text }
 
-    fun addTask(title: String, totalMinutes: Int, sessionMinutes: Int, deadline: LocalDate?) = viewModelScope.launch {
+    /** [onDay] = toate sesiunile într-o zi anume (sarcina e a săptămânii acelei zile); altfel a săptămânii arătate. */
+    fun addTask(title: String, totalMinutes: Int, sessionMinutes: Int, deadline: LocalDate?, onDay: LocalDate? = null) = viewModelScope.launch {
         val categories = repo.observeCategories().first()
         val known = repo.observeActivitiesInRange("0000-01-01", "9999-12-31").first().mapNotNull { a ->
             a.categoryId?.let { CategoryGuess.Known(a.titleKey ?: TitleKey.of(a.title), it) }
@@ -687,11 +688,11 @@ class WeekViewModel(private val app: Application) : AndroidViewModel(app) {
             WeekTask(
                 title = title.trim(),
                 categoryId = categoryId,
-                weekStart = weekStart(offset.value).toString(),
+                weekStart = (onDay?.let(PeriodReport::weekStart) ?: weekStart(offset.value)).toString(),
                 totalMinutes = totalMinutes,
                 sessionMinutes = sessionMinutes.coerceAtMost(totalMinutes),
                 deadline = deadline?.toString(),
-                pinnedDate = null
+                pinnedDate = onDay?.toString()
             )
         )
     }

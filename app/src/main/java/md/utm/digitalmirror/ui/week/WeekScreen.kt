@@ -396,11 +396,12 @@ fun WeekScreen(
     )
 
     if (adding) {
-        NewTaskDialog(
+        NewTaskSheet(
             weekStart = state.weekStart,
             onDismiss = { adding = false },
-            onSave = { title, minutes, session, deadline ->
-                vm.addTask(title, minutes, session, deadline)
+            onSave = { title, minutes, session, deadline, onDay ->
+                vm.addTask(title, minutes, session, deadline, onDay)
+                onDay?.let(vm::select)      // arătăm săptămâna și ziua în care a ajuns
                 adding = false
             }
         )
@@ -676,90 +677,6 @@ private fun TaskCard(
             }
         }
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun NewTaskDialog(
-    weekStart: LocalDate,
-    onDismiss: () -> Unit,
-    onSave: (String, Int, Int, LocalDate?) -> Unit
-) {
-    var text by rememberSaveable { mutableStateOf("") }
-    var sessionOverride by rememberSaveable { mutableIntStateOf(0) }        // 0 = din text sau 90 min
-    var deadlineOverride by rememberSaveable { mutableIntStateOf(-2) }      // -2 = din text, -1 = fără termen
-
-    val parsed = remember(text) { WeekTaskParser.parse(text) }
-    val title = parsed.title
-    val minutes = parsed.totalMinutes ?: 0
-    val session = if (sessionOverride > 0) sessionOverride else parsed.sessionMinutes ?: 90
-    val deadlineIndex = if (deadlineOverride != -2) deadlineOverride else parsed.deadlineDay ?: -1
-    val valid = title != null && minutes >= 15
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Sarcină nouă") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = text, onValueChange = { text = it },
-                    label = { Text("Ce ai de făcut?") },
-                    placeholder = { Text("Lucru la licență 6h, până vineri") },
-                    minLines = 2, modifier = Modifier.fillMaxWidth()
-                )
-                Text(
-                    "Scrie liber: titlul, cât durează în total și, dacă vrei, „sesiuni de 90 min” și „până vineri”.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // ce am înțeles, ca să se vadă înainte de salvare
-                if (text.isNotBlank()) {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                        Column(Modifier.padding(10.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(title ?: "Titlul lipsește", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                if (minutes > 0) "${formatDuration(minutes)} în total" else "Cât durează în total? Scrie de exemplu 6h",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (minutes > 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.error
-                            )
-                            Text("Sesiuni de ${formatDuration(session)}", style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                if (deadlineIndex >= 0) "Termen: ${DAY_NAMES[deadlineIndex]}" else "Fără termen",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-
-                Text("Schimbă sesiunea", style = MaterialTheme.typography.labelMedium)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (listOf(30, 60, 90, 120) + session).distinct().sorted().forEach { m ->
-                        FilterChip(selected = session == m, onClick = { sessionOverride = m }, label = { Text(formatDuration(m)) })
-                    }
-                }
-                Text("Schimbă termenul", style = MaterialTheme.typography.labelMedium)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(selected = deadlineIndex == -1, onClick = { deadlineOverride = -1 }, label = { Text("Fără") })
-                    (0..6).forEach { i ->
-                        FilterChip(
-                            selected = deadlineIndex == i, onClick = { deadlineOverride = i },
-                            label = { Text(Availability.shortDayName(i)) }
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = valid,
-                onClick = {
-                    onSave(title!!, minutes, session, if (deadlineIndex >= 0) weekStart.plusDays(deadlineIndex.toLong()) else null)
-                }
-            ) { Text("Adaugă") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Anulează") } }
-    )
 }
 
 @Composable
