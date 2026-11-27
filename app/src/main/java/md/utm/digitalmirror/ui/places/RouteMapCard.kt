@@ -168,7 +168,7 @@ fun RouteMapCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        RealTrips(o.trips)
+                        RealTrips(o.trips, TravelEstimator.Estimate(o.baseMinutes, o.estimate.source))
                     }
                 }
             }
@@ -275,7 +275,7 @@ private val TRIP_DAYS = listOf("luni", "marți", "miercuri", "joi", "vineri", "s
 
 /** Drumurile reale pe ruta aleasă: când ai plecat și cât ți-a luat, cu o bară ca să se vadă diferențele. */
 @Composable
-private fun RealTrips(trips: List<TravelEstimator.Trip>) {
+private fun RealTrips(trips: List<TravelEstimator.Trip>, base: TravelEstimator.Estimate) {
     if (trips.isEmpty()) {
         Text(
             "Drumurile reale apar aici singure: telefonul vede când ieși dintr-un loc și când ajungi în celălalt " +
@@ -287,11 +287,20 @@ private fun RealTrips(trips: List<TravelEstimator.Trip>) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Drumurile tale reale", style = MaterialTheme.typography.labelLarge)
+        if (trips.any { !TravelEstimator.plausible(base, it.minutes) }) {
+            Text(
+                "Cele cu ✕ nu se potrivesc cu modul ales (de ex. ieșirea detectată târziu sau o oprire pe drum), așa că nu le iau în calcul.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         val shown = trips.take(8)
         val longest = shown.maxOf { it.minutes }.coerceAtLeast(1)
         val zone = java.time.ZoneId.systemDefault()
         shown.forEach { t ->
             val at = java.time.Instant.ofEpochMilli(t.departAt).atZone(zone)
+            // un drum care nu se potrivește cu modul (ieșire detectată târziu, o oprire pe drum) nu contează
+            val counts = TravelEstimator.plausible(base, t.minutes)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "${TRIP_DAYS[at.dayOfWeek.value - 1]} ${at.dayOfMonth}.${"%02d".format(at.monthValue)}, " +
@@ -306,13 +315,14 @@ private fun RealTrips(trips: List<TravelEstimator.Trip>) {
                 ) {
                     Box(
                         Modifier.fillMaxHeight().fillMaxWidth(t.minutes.toFloat() / longest)
-                            .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary)
+                            .clip(RoundedCornerShape(4.dp)).background(if (counts) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                     )
                 }
                 Text(
-                    formatDuration(t.minutes),
+                    formatDuration(t.minutes) + if (counts) "" else " ✕",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
+                    color = if (counts) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
                     modifier = Modifier.width(64.dp).padding(start = 8.dp)
                 )
             }

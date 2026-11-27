@@ -122,9 +122,11 @@ fun PresenceCard(
                 HorizontalDivider()
                 Text("Prezențe recente", style = MaterialTheme.typography.labelLarge)
                 recentVisits.forEach { visit ->
+                    val short = visit.exitAt != null && visit.exitAt - visit.enterAt < md.utm.digitalmirror.domain.PresenceRules.MIN_VISIT_MILLIS
                     Text(
                         "${visit.placeName} · ${formatVisit(visit)}",
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (short) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -166,7 +168,15 @@ private val timeFormat = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.sy
 
 private fun formatVisit(visit: RecentVisit): String {
     val start = Instant.ofEpochMilli(visit.enterAt)
-    val exit = visit.exitAt
-    return if (exit == null) "${dayFormat.format(start)}, de la ${timeFormat.format(start)} (încă acolo)"
-    else "${dayFormat.format(start)}, ${timeFormat.format(start)}–${timeFormat.format(Instant.ofEpochMilli(exit))}"
+    val exitAt = visit.exitAt
+        ?: return "${dayFormat.format(start)}, de la ${timeFormat.format(start)} (încă acolo)"
+    val exit = Instant.ofEpochMilli(exitAt)
+    val minutes = ((exitAt - visit.enterAt) / 60_000L).toInt()
+    // ieșirea în altă zi (o noapte acasă): o scriem cu ziua ei, altfel pare că se termină înainte să înceapă
+    val sameDay = dayFormat.format(start) == dayFormat.format(exit)
+    val span = if (sameDay) "${dayFormat.format(start)}, ${timeFormat.format(start)}–${timeFormat.format(exit)}"
+    else "${dayFormat.format(start)} ${timeFormat.format(start)} → ${dayFormat.format(exit)} ${timeFormat.format(exit)}"
+    // sub 5 minute e o trecere prin zonă sau GPS-ul care „tremură” la margine: nu contează la calcule
+    return if (exitAt - visit.enterAt < md.utm.digitalmirror.domain.PresenceRules.MIN_VISIT_MILLIS) "$span · trecere scurtă, ignorată"
+    else "$span · ${md.utm.digitalmirror.ui.components.formatDuration(minutes)}"
 }
