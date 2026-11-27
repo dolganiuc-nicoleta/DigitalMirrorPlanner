@@ -1556,6 +1556,7 @@ private fun ActivityDialog(
     // la editare, sau cu analiza oprită, nu mai cerem ghicitul
     var revealed by remember { mutableStateOf((isEdit && !askGuess) || !analysisOn) }
     var guessMinutes by remember { mutableStateOf(initial?.userGuessMinutes) }
+    var estimateChosen by remember { mutableStateOf(false) }   // ai ales din propunere: caseta se strânge
 
     // pasul 2: durata planificată finală
     var plannedMinutes by remember { mutableStateOf(initial?.userEstimatedMinutes) }
@@ -1815,14 +1816,31 @@ private fun ActivityDialog(
             } else {
                 // pasul 2: propunerea din istoric și durata planificată
                 estimate?.let { e ->
-                    EstimateCard(
-                        estimate = e,
-                        guessMinutes = guessMinutes,
-                        categoryName = selectedCategory?.name,
-                        onUseEstimate = { plannedMinutes = e.minutes },
-                        onKeepGuess = { guessMinutes?.let { plannedMinutes = it } },
-                        planned = plannedMinutes
-                    )
+                    if (!estimateChosen) {
+                        EstimateCard(
+                            estimate = e,
+                            guessMinutes = guessMinutes,
+                            categoryName = selectedCategory?.name,
+                            onUseEstimate = { plannedMinutes = e.minutes; estimateChosen = true },
+                            onKeepGuess = { guessMinutes?.let { plannedMinutes = it }; estimateChosen = true },
+                            planned = plannedMinutes
+                        )
+                    } else {
+                        // ales: caseta se strânge într-un rând, cu „Schimbă” dacă te răzgândești
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Planifici ${plannedMinutes?.let(::formatDuration) ?: "–"}" +
+                                            if (plannedMinutes != e.minutes) " · istoricul zicea ~${formatDuration(e.minutes)}" else "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { estimateChosen = false }) { Text("Schimbă") }
+                            }
+                        }
+                    }
                 }
 
                 FormSection("Durata") {

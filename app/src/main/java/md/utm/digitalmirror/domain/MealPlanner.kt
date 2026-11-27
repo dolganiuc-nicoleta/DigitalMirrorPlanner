@@ -53,6 +53,36 @@ object MealPlanner {
 
     private const val STEP = 5
 
+    // cuvintele după care recunoaștem o masă în titlu (fără diacritice, vezi PlanParser.fold)
+    private val WORDS = mapOf(
+        Kind.BREAKFAST to Regex("""\b(mic dejun|dejun|breakfast|brunch)\b"""),
+        Kind.LUNCH to Regex("""\b(pranz\w*|lunch)\b"""),
+        Kind.DINNER to Regex("""\b(cina|cinei|dinner)\b""")
+    )
+    private val ANY_MEAL = Regex("""\b(masa|mancare|mananc|restaurant|pizza|sushi)\b""")
+
+    /** Cât poate fi ora unei mese în afara ferestrei ca s-o socotim tot masa aceea (cina la 17:30 tot cină e). */
+    private const val NEAR_MINUTES = 90
+
+    /**
+     * Mesele care sunt deja în zi ca activități sau evenimente („Cina cu mama la 18:30”, „prânz cu colegii”):
+     * pentru ele nu mai păstrăm încă un loc. Un titlu cu numele mesei o acoperă dacă ora e aproape de fereastra ei
+     * (sau nu are oră); unul general („masa cu …”, „restaurant”) acoperă masa în fereastra căreia cade.
+     * @param items titlul și ora de început (null = fără oră) ale lucrurilor din zi
+     */
+    fun coveredBy(windows: List<Window>, items: List<Pair<String, Int?>>): List<Window> {
+        val folded = items.map { (title, start) -> PlanParser.fold(title) to start }
+        return windows.map { w ->
+            val named = WORDS[w.kind]!!
+            val near = { s: Int? -> s == null || s in (w.from - NEAR_MINUTES)..(w.to + NEAR_MINUTES) }
+            val covered = folded.any { (t, s) ->
+                (named.containsMatchIn(t) && near(s)) ||
+                        (ANY_MEAL.containsMatchIn(t) && s != null && s in w.from until w.to)
+            }
+            if (covered) w.copy(enabled = false) else w
+        }
+    }
+
     /**
      * Locul fiecărei mese în zi, în ordinea ferestrelor; mesele deja alese nu se suprapun între ele.
      * @param busy tot ce e ocupat: activități, calendar, blocuri, drumuri cu pregătire

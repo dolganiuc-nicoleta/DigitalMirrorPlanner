@@ -114,10 +114,18 @@ object DayBusy {
     suspend fun override(context: Context, date: LocalDate): DayOverride? =
         AppDatabase.get(context).dayOverrideDao().get(date.toString())
 
-    /** Ferestrele meselor pentru ziua dată; cele sărite în ziua asta sunt oprite. */
+    /**
+     * Ferestrele meselor pentru ziua dată; cele sărite în ziua asta sunt oprite, la fel și cele care sunt
+     * deja în zi ca activitate sau eveniment („Cina cu mama la 18:30” ține loc de cină).
+     */
     suspend fun meals(context: Context, date: LocalDate): List<MealPlanner.Window> {
         val skipped = override(context, date)?.skipped.orEmpty()
-        return MealPrefs.windows(context).map { if (it.kind.name in skipped) it.copy(enabled = false) else it }
+        val windows = MealPrefs.windows(context).map { if (it.kind.name in skipped) it.copy(enabled = false) else it }
+        val activities = AppDatabase.get(context).activityDao().observeByDate(date.toString()).first()
+            .filter { it.state != "ABANDONED" && it.state != "POSTPONED" }
+            .map { it.title to it.plannedStartMinute }
+        val events = CalendarReader.eventsFor(context, date).filter { !it.allDay }.map { it.title to it.startMinute }
+        return MealPlanner.coveredBy(windows, activities + events)
     }
 
     /** Intervalul pentru lucruri flexibile în ziua dată (după trezire și dimineață, până la culcare). */

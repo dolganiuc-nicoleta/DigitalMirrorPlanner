@@ -62,6 +62,26 @@ class MealPlannerTest {
     }
 
     @Test
+    fun `cina cu mama tine loc de cina`() {
+        val w = MealPlanner.coveredBy(listOf(lunch, dinner), listOf("Cină cu mama" to h(18, 30)))
+        assertTrue(w.first { it.kind == Kind.LUNCH }.enabled)
+        assertTrue(!w.first { it.kind == Kind.DINNER }.enabled)
+    }
+
+    @Test
+    fun `masa generala acopera masa in fereastra careia cade`() {
+        val w = MealPlanner.coveredBy(listOf(lunch, dinner), listOf("Masa cu colegii" to h(13)))
+        assertTrue(!w.first { it.kind == Kind.LUNCH }.enabled)
+        assertTrue(w.first { it.kind == Kind.DINNER }.enabled)
+    }
+
+    @Test
+    fun `cuvinte asemanatoare nu sunt mese`() {
+        val w = MealPlanner.coveredBy(listOf(dinner), listOf("Cinema" to h(19), "Proiect" to null))
+        assertTrue(w.single().enabled)
+    }
+
+    @Test
     fun `masa oprita nu apare deloc`() {
         val r = MealPlanner.place(listOf(lunch.copy(enabled = false)), emptyList())
         assertTrue(r.slots.isEmpty())
