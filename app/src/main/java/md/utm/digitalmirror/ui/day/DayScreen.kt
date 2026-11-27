@@ -87,6 +87,8 @@ fun DayScreen(
     onPlanWeek: () -> Unit = {},
     onPrep: () -> Unit = {},
     onOpenRoute: (fromPlaceId: Long, toPlaceId: Long) -> Unit = { _, _ -> },
+    requestEditId: Long? = null,
+    onEditShown: () -> Unit = {},
     vm: DayViewModel = viewModel()
 ) {
     // altă pagină a cerut o anumită zi (de ex. mâine, din închiderea zilei)
@@ -167,6 +169,14 @@ fun DayScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var addAtMinute by remember { mutableStateOf<Int?>(null) }       // ora completată când apeși „+ Adaugă” într-un spațiu liber
     var editing by remember { mutableStateOf<Activity?>(null) }      // activitatea în editare
+    // altă pagină a cerut editarea unei activități: o deschidem când apare în ziua încărcată
+    LaunchedEffect(requestEditId, activities) {
+        val id = requestEditId ?: return@LaunchedEffect
+        activities.firstOrNull { it.id == id }?.let {
+            editing = it
+            onEditShown()
+        }
+    }
     var postponing by remember { mutableStateOf<Activity?>(null) }   // activitatea pentru care alegem o zi
     var moving by remember { mutableStateOf<Activity?>(null) }       // activitatea pentru care arătăm propunerile „Mută”
     var interrupting by remember { mutableStateOf(false) }           // foaia „⚡ A apărut ceva”
@@ -593,7 +603,7 @@ fun DayScreen(
             onDismiss = { editing = null },
             onAddCategory = { vm.addCategory(it) },
             onConfirm = { r ->
-                vm.editActivity(activity.id, r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.note, r.tags, r.placeId)
+                vm.editActivity(activity.id, r.title, r.categoryId, r.plannedMinutes, r.startMinute, r.note, r.tags, r.placeId, r.guessMinutes, r.estimate)
                 editing = null
             }
         )
@@ -1525,6 +1535,10 @@ private fun ActivityDialog(
     onConfirm: (ActivityFormResult) -> Unit
 ) {
     val isEdit = initial != null
+    // scrisă rapid (pe bandă, în captură) fără să fi spus cât crezi: o întrebăm acum, ca la una nouă
+    val askGuess = isEdit && analysisOn && initial?.userGuessMinutes == null && initial?.estimatedMinutes == null && initial?.state == "PLANNED"
+    // propunerea din istoric: la una nouă, sau la una care n-a avut încă propunere
+    val wantsEstimate = !isEdit || (initial?.estimatedMinutes == null && initial?.state == "PLANNED")
 
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var selectedCategory by remember {
@@ -1540,8 +1554,8 @@ private fun ActivityDialog(
     // pasul 1: ghicitul utilizatorului
     var guessInput by remember { mutableStateOf<Int?>(null) }
     // la editare, sau cu analiza oprită, nu mai cerem ghicitul
-    var revealed by remember { mutableStateOf(isEdit || !analysisOn) }
-    var guessMinutes by remember { mutableStateOf<Int?>(null) }
+    var revealed by remember { mutableStateOf((isEdit && !askGuess) || !analysisOn) }
+    var guessMinutes by remember { mutableStateOf(initial?.userGuessMinutes) }
 
     // pasul 2: durata planificată finală
     var plannedMinutes by remember { mutableStateOf(initial?.userEstimatedMinutes) }
@@ -1554,13 +1568,13 @@ private fun ActivityDialog(
     // propunerea se recalculează când se schimbă titlul sau categoria
     val titleKey = TitleKey.of(title)
     val estimate = remember(history, titleKey, selectedCategory?.id, guessMinutes, revealed) {
-        if (!analysisOn || !revealed || isEdit) null
+        if (!analysisOn || !revealed || !wantsEstimate) null
         else HistoryEstimator.estimate(history, titleKey, selectedCategory?.id, guessMinutes, priorRatio)
     }
 
     // la dezvăluire, durata planificată pornește de la propunere (utilizatorul o poate schimba)
     LaunchedEffect(estimate?.minutes) {
-        if (!isEdit && estimate != null && plannedMinutes == null) {
+        if (estimate != null && (plannedMinutes == null || askGuess)) {
             plannedMinutes = guessMinutes ?: estimate.minutes
         }
     }

@@ -87,6 +87,7 @@ object Routes {
 
 /** Cheia prin care un ecran cere ecranului zilei să arate o anumită dată. */
 private const val OPEN_DATE = "open_date"
+private const val OPEN_EDIT = "open_edit"   // id-ul activității de deschis în editare, pe Azi
 
 /** Cheia prin care „+ › Ceva acum” cere ecranului zilei să deschidă formularul de activitate. */
 private const val OPEN_ADD = "open_add"
@@ -217,6 +218,7 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 // ziua cerută de alt ecran (de ex. „Deschide ziua de mâine” din închiderea zilei)
                 val requested by entry.savedStateHandle.getStateFlow<String?>(OPEN_DATE, null).collectAsState()
                 val requestAdd by entry.savedStateHandle.getStateFlow(OPEN_ADD, false).collectAsState()
+                val requestEdit by entry.savedStateHandle.getStateFlow<Long?>(OPEN_EDIT, null).collectAsState()
                 DayScreen(
                     requestedDate = requested,
                     onRequestedDateShown = { entry.savedStateHandle[OPEN_DATE] = null },
@@ -227,7 +229,9 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     onPlan = { navController.navigate(Routes.PLAN) },
                     onPlanWeek = { navController.navigate(Routes.WEEK) },
                     onPrep = { navController.navigate(Routes.PREP) },
-                    onOpenRoute = { from, to -> navController.navigate(Routes.places(from, to)) }
+                    onOpenRoute = { from, to -> navController.navigate(Routes.places(from, to)) },
+                    requestEditId = requestEdit,
+                    onEditShown = { entry.savedStateHandle[OPEN_EDIT] = null }
                 )
             }
 
@@ -288,6 +292,15 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                     startAdding = newTask,
                     onStartAddingShown = { entry.savedStateHandle[OPEN_NEW_TASK] = false },
                     onOpenActivity = { id -> navController.navigate(Routes.activity(id)) },
+                    onEditActivity = { id, date ->
+                        openTab(Routes.DAY)
+                        runCatching {
+                            navController.getBackStackEntry(Routes.DAY).savedStateHandle.apply {
+                                set(OPEN_DATE, date.toString())
+                                set(OPEN_EDIT, id)
+                            }
+                        }
+                    },
                     onOpenDay = { date ->
                         openTab(Routes.DAY)
                         runCatching { navController.getBackStackEntry(Routes.DAY).savedStateHandle[OPEN_DATE] = date.toString() }
@@ -387,7 +400,20 @@ fun AppNavigation(openClosingToday: Boolean, openCapsule: Boolean = false) {
                 arguments = listOf(navArgument("id") { type = NavType.LongType })
             ) { entry ->
                 val id = entry.arguments?.getLong("id") ?: return@composable
-                ActivityDetailScreen(activityId = id, onBack = { navController.popBackStack() })
+                ActivityDetailScreen(
+                    activityId = id,
+                    onBack = { navController.popBackStack() },
+                    // editarea se face în ziua activității, cu tot ce știe ziua (cursuri, drumuri, propuneri)
+                    onEdit = { date ->
+                        openTab(Routes.DAY)
+                        runCatching {
+                            navController.getBackStackEntry(Routes.DAY).savedStateHandle.apply {
+                                set(OPEN_DATE, date)
+                                set(OPEN_EDIT, id)
+                            }
+                        }
+                    }
+                )
             }
         }
 

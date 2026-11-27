@@ -88,6 +88,7 @@ fun WeekScreen(
     onStartAddingShown: () -> Unit = {},
     onOpenDay: (LocalDate) -> Unit = {},
     onOpenActivity: (Long) -> Unit = {},
+    onEditActivity: (Long, LocalDate) -> Unit = { _, _ -> },
     vm: WeekViewModel = viewModel()
 ) {
     val state by vm.state.collectAsState()
@@ -149,36 +150,39 @@ fun WeekScreen(
             if (view == WeekViewModel.View.WEEK) {
                 // --- tabla: săptămâna asta, următoarea sau cea de după, zi cu zi ---
                 item {
-                    BoardHeader(
-                        weekStart = state.weekStart,
-                        offset = state.offset,
-                        onPrev = { vm.setOffset(state.offset - 1) },
-                        onNext = { vm.setOffset(state.offset + 1) },
-                        aiAvailable = vm.aiAvailable,
-                        aiLoading = ai == WeekViewModel.AiUi.Loading,
-                        onBalance = { if (AiPrefs.hasConsent(context)) vm.balance() else askConsent = true }
-                    )
-                }
-                item {
                     val week = board.filter { !it.date.isBefore(state.weekStart) && it.date.isBefore(state.weekStart.plusDays(7)) }
-                    if (week.isEmpty()) {
+                    if (week.size < 7) {
                         Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     } else {
-                        WeekBoardView(
+                        WeekDayPlanner(
                             days = week,
+                            offset = state.offset,
+                            selected = selectedDate,
+                            onSelect = vm::select,
+                            onPrev = { vm.setOffset(state.offset - 1) },
+                            onNext = { vm.setOffset(state.offset + 1) },
                             onAdd = vm::addToDay,
                             onMove = vm::moveToDay,
                             onCancel = vm::cancelActivity,
-                            onOpen = onOpenActivity
+                            onOpen = onOpenActivity,
+                            onEdit = onEditActivity
                         )
                     }
                 }
                 item {
                     Text(
-                        "Ține apăsat pe o sarcină și trage-o în altă zi. Atinge-o ca s-o deschizi sau s-o anulezi.",
+                        "Ține apăsat pe o sarcină și trage-o pe altă zi din bandă. Atinge-o ca s-o deschizi sau s-o anulezi.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (vm.aiAvailable) {
+                    item {
+                        AiBalanceButton(
+                            loading = ai == WeekViewModel.AiUi.Loading,
+                            onBalance = { if (AiPrefs.hasConsent(context)) vm.balance() else askConsent = true }
+                        )
+                    }
                 }
             } else {
                 item {

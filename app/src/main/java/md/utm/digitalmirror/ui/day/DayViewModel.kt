@@ -629,7 +629,9 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
         startMinute: Int?,
         note: String = "",
         tags: String = "",
-        placeId: Long? = null
+        placeId: Long? = null,
+        guessMinutes: Int? = null,                    // spus acum, la editare (dacă nu fusese spus)
+        estimate: HistoryEstimator.Estimate? = null   // propunerea arătată acum (dacă nu avusese)
     ) = viewModelScope.launch {
         if (title.isBlank()) return@launch
         // citim varianta proaspătă din baza de date, ca să nu pierdem timpul cronometrat între timp
@@ -641,7 +643,12 @@ class DayViewModel(private val app: Application) : AndroidViewModel(app) {
             plannedStartMinute = startMinute,
             note = note.trim(),
             tags = tags,
-            placeId = placeId
+            placeId = placeId,
+            // ghicitul și propunerea se păstrează doar prima dată (sunt măsurători pentru estimare)
+            userGuessMinutes = fresh.userGuessMinutes ?: guessMinutes,
+            estimatedMinutes = fresh.estimatedMinutes ?: estimate?.minutes,
+            estimatedLowMinutes = fresh.estimatedLowMinutes ?: estimate?.lowMinutes,
+            estimatedHighMinutes = fresh.estimatedHighMinutes ?: estimate?.highMinutes
         )
         repo.updateActivity(updated)
         ActivityReminders.onActivityPlanned(app, updated)

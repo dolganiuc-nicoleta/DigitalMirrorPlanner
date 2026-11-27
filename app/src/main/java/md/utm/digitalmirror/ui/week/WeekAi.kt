@@ -24,55 +24,18 @@ private val MONTHS = listOf("ian", "feb", "mar", "apr", "mai", "iun", "iul", "au
 private fun short(date: LocalDate) =
     "${Availability.shortDayName(date.dayOfWeek.value - 1)} ${date.dayOfMonth} ${MONTHS[date.monthValue - 1]}"
 
-/** „‹ Săptămâna asta · 23–29 nov ›” și butonul „✨ Echilibrează”. */
+/** „✨ Echilibrează săptămânile”: AI-ul se uită pe cele 3 săptămâni și propune ce să muți. */
 @Composable
-fun BoardHeader(
-    weekStart: LocalDate,
-    offset: Int,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-    aiAvailable: Boolean,
-    aiLoading: Boolean,
-    onBalance: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onPrev, enabled = offset > 0) {
-                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = "Săptămâna dinainte")
-            }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    when (offset) {
-                        0 -> "Săptămâna asta"
-                        1 -> "Săptămâna viitoare"
-                        else -> "Peste două săptămâni"
-                    },
-                    fontFamily = Fraunces,
-                    style = MaterialTheme.typography.titleLarge
-                )
-                val end = weekStart.plusDays(6)
-                Text(
-                    "${weekStart.dayOfMonth} ${MONTHS[weekStart.monthValue - 1]} – ${end.dayOfMonth} ${MONTHS[end.monthValue - 1]}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            IconButton(onClick = onNext, enabled = offset < 2) {
-                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Săptămâna următoare")
-            }
-        }
-        if (aiAvailable) {
-            FilledTonalButton(onClick = onBalance, enabled = !aiLoading, modifier = Modifier.fillMaxWidth()) {
-                if (aiLoading) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Mă uit pe săptămânile tale…")
-                } else {
-                    Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Echilibrează săptămânile")
-                }
-            }
+fun AiBalanceButton(loading: Boolean, onBalance: () -> Unit) {
+    FilledTonalButton(onClick = onBalance, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text("Mă uit pe săptămânile tale…")
+        } else {
+            Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Echilibrează săptămânile")
         }
     }
 }

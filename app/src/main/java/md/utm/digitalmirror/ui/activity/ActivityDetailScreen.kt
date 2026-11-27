@@ -32,6 +32,7 @@ import kotlin.math.abs
 fun ActivityDetailScreen(
     activityId: Long,
     onBack: () -> Unit,
+    onEdit: (date: String) -> Unit = {},
     vm: ActivityDetailViewModel = viewModel()
 ) {
     LaunchedEffect(activityId) { vm.load(activityId) }
@@ -43,7 +44,10 @@ fun ActivityDetailScreen(
         topBar = {
             TopAppBar(
                 navigationIcon = { TextButton(onClick = onBack) { Text("←") } },
-                title = { Text(state?.activity?.title ?: "", maxLines = 1) }
+                title = { Text(state?.activity?.title ?: "", maxLines = 1) },
+                actions = {
+                    state?.activity?.let { a -> TextButton(onClick = { onEdit(a.date) }) { Text("Editează") } }
+                }
             )
         }
     ) { padding ->
@@ -69,6 +73,19 @@ fun ActivityDetailScreen(
                         }.joinToString(" · "),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // editarea: ora, cât crezi că durează, categoria, locul; în ziua activității, cu propunerile ei
+            if (s.activity.state == "PLANNED" || s.activity.state == "IN_PROGRESS") {
+                item {
+                    FilledTonalButton(onClick = { onEdit(s.activity.date) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            if (s.activity.userGuessMinutes == null && s.activity.estimatedMinutes == null)
+                                "Editează · spune cât crezi că durează"
+                            else "Editează: ora, durata, detaliile"
+                        )
+                    }
                 }
             }
 
