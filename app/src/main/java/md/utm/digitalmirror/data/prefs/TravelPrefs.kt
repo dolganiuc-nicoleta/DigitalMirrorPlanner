@@ -32,6 +32,21 @@ object TravelPrefs {
         }.apply()
     }
 
+    /** Toate modurile alese pe drumuri, pentru copia de rezervă: „route_3_7” → „TRANSIT”. */
+    fun routeModes(context: Context): Map<String, String> =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).all
+            .filterKeys { it.startsWith("route_") }
+            .mapValues { it.value.toString() }
+
+    /** Înlocuiește toate modurile pe drumuri (la restaurare; o hartă goală le șterge, la ieșirea din cont). */
+    fun setRouteModes(context: Context, modes: Map<String, String>) {
+        val prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            prefs.all.keys.filter { it.startsWith("route_") }.forEach(::remove)
+            modes.filterKeys { it.startsWith("route_") }.forEach { (k, v) -> putString(k, v) }
+        }.apply()
+    }
+
     /** Modul cu care se planifică drumul: cel ales pentru el, altfel cel obișnuit. */
     fun modeFor(context: Context, from: Long, to: Long): TravelEstimator.Mode =
         routeMode(context, from, to) ?: mode(context)

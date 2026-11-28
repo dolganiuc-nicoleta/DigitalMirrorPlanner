@@ -101,6 +101,8 @@ object AccountSync {
         TravelPrefs.setPrepMinutes(context, TravelPrefs.DEFAULT_PREP_MINUTES)
         MealPrefs.reset(context)
         md.utm.digitalmirror.data.prefs.SleepPrefs.reset(context)
+        TravelPrefs.setRouteModes(context, emptyMap())                   // drumurile erau între locurile contului
+        md.utm.digitalmirror.data.ai.AiPrefs.setConsent(context, false)  // acordul pentru AI e al fiecărui cont
 
         // fără locuri, zonele de detectare se scot
         runCatching { GeofenceManager.sync(context) }

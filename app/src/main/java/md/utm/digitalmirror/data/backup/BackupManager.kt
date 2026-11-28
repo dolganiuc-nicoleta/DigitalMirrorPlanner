@@ -105,7 +105,12 @@ object BackupManager {
                 .put("travelMode", TravelPrefs.mode(context).name)
                 .put("homePlaceId", TravelPrefs.homePlaceId(context) ?: JSONObject.NULL)
                 .put("prepMinutes", TravelPrefs.prepMinutes(context))
-                .put("meals", MealPrefs.toJson(MealPrefs.windows(context))))
+                .put("meals", MealPrefs.toJson(MealPrefs.windows(context)))
+                // ritmul spus la configurare, modul ales pe fiecare drum și acordul pentru AI
+                .put("sleepWake", md.utm.digitalmirror.data.prefs.SleepPrefs.wake(context) ?: JSONObject.NULL)
+                .put("sleepBed", md.utm.digitalmirror.data.prefs.SleepPrefs.bed(context) ?: JSONObject.NULL)
+                .put("routeModes", JSONObject(TravelPrefs.routeModes(context)))
+                .put("aiConsent", md.utm.digitalmirror.data.ai.AiPrefs.hasConsent(context)))
             .put("tables", tables)
 
         root.toString() to rows
@@ -190,6 +195,14 @@ object BackupManager {
             if (p.has("homePlaceId")) TravelPrefs.setHomePlaceId(context, p.optLong("homePlaceId", -1L).takeIf { it > 0 })
             p.optJSONArray("meals")?.let { MealPrefs.save(context, MealPrefs.fromJson(it)) }
             if (p.has("prepMinutes")) TravelPrefs.setPrepMinutes(context, p.optInt("prepMinutes", TravelPrefs.DEFAULT_PREP_MINUTES))
+            // ritmul, modurile pe drumuri și acordul pentru AI (copiile mai vechi nu le au: rămân cele de acum)
+            if (p.has("sleepWake") && !p.isNull("sleepWake") && !p.isNull("sleepBed")) {
+                md.utm.digitalmirror.data.prefs.SleepPrefs.save(context, p.getInt("sleepWake"), p.getInt("sleepBed"))
+            }
+            p.optJSONObject("routeModes")?.let { modes ->
+                TravelPrefs.setRouteModes(context, modes.keys().asSequence().associateWith { modes.getString(it) })
+            }
+            if (p.has("aiConsent")) md.utm.digitalmirror.data.ai.AiPrefs.setConsent(context, p.optBoolean("aiConsent"))
         }
 
         // alarmele și reminderul de seară trebuie programate din nou pentru datele restaurate
