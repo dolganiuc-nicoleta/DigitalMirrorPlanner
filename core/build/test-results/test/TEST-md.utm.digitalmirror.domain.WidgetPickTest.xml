@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.WidgetPickTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.637Z" hostname="DESKTOP-TVHC3T1" time="0.018">
+  <properties/>
+  <testcase name="in timpul unei activitati - porneste chiar pe ea" classname="md.utm.digitalmirror.domain.WidgetPickTest" time="0.009"/>
+  <testcase name="seara tarziu - una fara ora, daca mai e" classname="md.utm.digitalmirror.domain.WidgetPickTest" time="0.0"/>
+  <testcase name="intre activitati - urmatoarea cu ora" classname="md.utm.digitalmirror.domain.WidgetPickTest" time="0.0"/>
+  <testcase name="cele terminate nu se pornesc" classname="md.utm.digitalmirror.domain.WidgetPickTest" time="0.0"/>
+  <testcase name="ce e in desfasurare nu apare si in urmeaza" classname="md.utm.digitalmirror.domain.WidgetPickTest" time="0.007"/>
+  <testcase name="urmeaza - doar ce n-a inceput, in ordine, cel mult trei" classname="md.utm.digitalmirror.domain.WidgetPickTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

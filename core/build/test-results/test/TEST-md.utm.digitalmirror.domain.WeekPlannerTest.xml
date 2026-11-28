@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.WeekPlannerTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.576Z" hostname="DESKTOP-TVHC3T1" time="0.046">
+  <properties/>
+  <testcase name="ce nu incape ramane neasezat si riscul e mare" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.004"/>
+  <testcase name="propozitiile necunoscute sunt returnate" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.009"/>
+  <testcase name="azi nu se aseaza in trecut" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="sarcinile cu termen apropiat se aseaza primele" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.003"/>
+  <testcase name="scenariul vreau liber joi dupa 14" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.007"/>
+  <testcase name="rata de reusita din istoric conteaza" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="imparte in sesiuni si lipeste ramasita mica" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="sarcina fixata ramane pe ziua ei" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="ocoleste intervalele ocupate" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="zi liberata de scenariu nu primeste sesiuni" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.003"/>
+  <testcase name="inainte de si dupa-amiaza" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="ziua peste buget e folosita doar la nevoie si e marcata riscanta" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="nicio sesiune nu trece de termen" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="scenarii cu zi intreaga, interval si moment al zilei" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.002"/>
+  <testcase name="sesiunile unei sarcini se raspandesc pe zile diferite" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.002"/>
+  <testcase name="fara sarcini nu exista procent" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <testcase name="sansele scad cand planul e incarcat" classname="md.utm.digitalmirror.domain.WeekPlannerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

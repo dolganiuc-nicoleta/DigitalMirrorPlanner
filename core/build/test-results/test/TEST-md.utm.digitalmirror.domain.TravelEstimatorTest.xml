@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.TravelEstimatorTest" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.450Z" hostname="DESKTOP-TVHC3T1" time="0.058">
+  <properties/>
+  <testcase name="un drum ie sit din comun nu strica mediana" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.006"/>
+  <testcase name="intre doua activitati la locuri diferite apare un drum" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.017"/>
+  <testcase name="timpul dintre activitati poate fi negativ cand se suprapun" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.0"/>
+  <testcase name="cu multe drumuri observate estimarea se apropie de ele" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.001"/>
+  <testcase name="activitatile se ordoneaza dupa ora, nu dupa lista" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.001"/>
+  <testcase name="fara drumuri observate ramane estimarea de baza" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.001"/>
+  <testcase name="transportul public se aproximeaza din distanta rutiera" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.008"/>
+  <testcase name="drumul incape sau depaseste timpul liber cu cateva minute" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.004"/>
+  <testcase name="un drum observat e intre iesirea din A si intrarea in B, cel mult 3 ore" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.001"/>
+  <testcase name="pe jos foloseste durata din serviciul de rute, cu semafoarele din oras" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.001"/>
+  <testcase name="activitatile fara loc sau fara ora sunt ignorate" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.0"/>
+  <testcase name="titlul drumului contine ambele locuri" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.0"/>
+  <testcase name="la acelasi loc nu e nevoie de drum" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.0"/>
+  <testcase name="drumurile reale se iau din vizite consecutive la locuri diferite" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.007"/>
+  <testcase name="cu doua drumuri observate estimarea e la jumatate intre baza si mediana" classname="md.utm.digitalmirror.domain.TravelEstimatorTest" time="0.004"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.QuickCaptureTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.166Z" hostname="DESKTOP-TVHC3T1" time="0.055">
+  <properties/>
+  <testcase name="text gol sau doar virgule" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.007"/>
+  <testcase name="etichetele zilelor" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.006"/>
+  <testcase name="pana vineri e o sarcina de saptamana cu termen" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.019"/>
+  <testcase name="o durata mare fara ora e de saptamana" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.002"/>
+  <testcase name="cuvintele de eveniment" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.005"/>
+  <testcase name="exemplul din macheta - patru lucruri, patru tipuri" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.01"/>
+  <testcase name="tipul ales de utilizator recitește bucata" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.001"/>
+  <testcase name="eveniment fara zi - ziua ramane de ales" classname="md.utm.digitalmirror.domain.QuickCaptureTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

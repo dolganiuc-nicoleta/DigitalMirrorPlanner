@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.TitleKeyTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.436Z" hostname="DESKTOP-TVHC3T1" time="0.005">
+  <properties/>
+  <testcase name="ignora diacriticele" classname="md.utm.digitalmirror.domain.TitleKeyTest" time="0.004"/>
+  <testcase name="ignora majusculele spatiile si punctuatia" classname="md.utm.digitalmirror.domain.TitleKeyTest" time="0.001"/>
+  <testcase name="titlurile diferite raman diferite" classname="md.utm.digitalmirror.domain.TitleKeyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

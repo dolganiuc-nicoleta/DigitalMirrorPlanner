@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.DayLoadTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.150Z" hostname="DESKTOP-TVHC3T1" time="0.036">
+  <properties/>
+  <testcase name="zilele din viitor si ziua curenta nu se iau in calcul" classname="md.utm.digitalmirror.domain.DayLoadTest" time="0.019"/>
+  <testcase name="detecteaza ziua supraincarcata" classname="md.utm.digitalmirror.domain.DayLoadTest" time="0.001"/>
+  <testcase name="detecteaza ziua usoara" classname="md.utm.digitalmirror.domain.DayLoadTest" time="0.002"/>
+  <testcase name="weekendul se compara cu weekendul cand sunt destule date" classname="md.utm.digitalmirror.domain.DayLoadTest" time="0.012"/>
+  <testcase name="foloseste mediana zilelor recente" classname="md.utm.digitalmirror.domain.DayLoadTest" time="0.001"/>
+  <testcase name="fara destule zile nu compara" classname="md.utm.digitalmirror.domain.DayLoadTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

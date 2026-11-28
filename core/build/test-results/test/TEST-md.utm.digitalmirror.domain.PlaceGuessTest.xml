@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.PlaceGuessTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.817Z" hostname="DESKTOP-TVHC3T1" time="0.05">
+  <properties/>
+  <testcase name="numele locului din titlu alege locul, fara diacritice si fara litere mari" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.006"/>
+  <testcase name="fara locuri sau fara titlu nu propune nimic" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.006"/>
+  <testcase name="numele din titlu are prioritate fata de istoric" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.01"/>
+  <testcase name="numele mai lung castiga" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.001"/>
+  <testcase name="fara nume in titlu se foloseste locul obisnuit din istoric" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.013"/>
+  <testcase name="la egalitate castiga locul cel mai recent, adica primul din lista" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.002"/>
+  <testcase name="un loc sters nu se mai propune" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.007"/>
+  <testcase name="un cuvant doar asemanator nu conteaza, trebuie cuvantul intreg" classname="md.utm.digitalmirror.domain.PlaceGuessTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

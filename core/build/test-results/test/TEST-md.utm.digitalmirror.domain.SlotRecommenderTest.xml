@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.SlotRecommenderTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.321Z" hostname="DESKTOP-TVHC3T1" time="0.017">
+  <properties/>
+  <testcase name="nu propune nimic cu mai putin de 3 activitati" classname="md.utm.digitalmirror.domain.SlotRecommenderTest" time="0.001"/>
+  <testcase name="ocoleste intervalele ocupate" classname="md.utm.digitalmirror.domain.SlotRecommenderTest" time="0.001"/>
+  <testcase name="alege ora la care activitatile au fost finalizate" classname="md.utm.digitalmirror.domain.SlotRecommenderTest" time="0.002"/>
+  <testcase name="fara istoric propune primul interval liber" classname="md.utm.digitalmirror.domain.SlotRecommenderTest" time="0.002"/>
+  <testcase name="fara istoric sare peste golurile prea mici" classname="md.utm.digitalmirror.domain.SlotRecommenderTest" time="0.004"/>
+  <testcase name="intervalul liber se verifica corect" classname="md.utm.digitalmirror.domain.SlotRecommenderTest" time="0.001"/>
+  <testcase name="nu propune ore fara date in jur" classname="md.utm.digitalmirror.domain.SlotRecommenderTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

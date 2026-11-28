@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.CategoryTidyTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.001Z" hostname="DESKTOP-TVHC3T1" time="0.027">
+  <properties/>
+  <testcase name="pluralul si diacriticele sunt aceeasi categorie" classname="md.utm.digitalmirror.domain.CategoryTidyTest" time="0.022"/>
+  <testcase name="categorii diferite nu sunt dubluri" classname="md.utm.digitalmirror.domain.CategoryTidyTest" time="0.003"/>
+  <testcase name="iconita ghicita din nume" classname="md.utm.digitalmirror.domain.CategoryTidyTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

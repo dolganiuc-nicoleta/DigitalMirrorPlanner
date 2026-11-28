@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.ProductivityMapTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.131Z" hostname="DESKTOP-TVHC3T1" time="0.028">
+  <properties/>
+  <testcase name="asaza activitatile in intervalele corecte" classname="md.utm.digitalmirror.domain.ProductivityMapTest" time="0.012"/>
+  <testcase name="gaseste cel mai bun interval si cea mai buna zi" classname="md.utm.digitalmirror.domain.ProductivityMapTest" time="0.012"/>
+  <testcase name="o serie scurta nu bate o serie lunga aproape perfecta" classname="md.utm.digitalmirror.domain.ProductivityMapTest" time="0.002"/>
+  <testcase name="fara destule date nu trage concluzii" classname="md.utm.digitalmirror.domain.ProductivityMapTest" time="0.001"/>
+  <testcase name="numara activitatile si reusitele pe celula" classname="md.utm.digitalmirror.domain.ProductivityMapTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

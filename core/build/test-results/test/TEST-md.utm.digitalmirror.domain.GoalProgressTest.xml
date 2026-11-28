@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.GoalProgressTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.467Z" hostname="DESKTOP-TVHC3T1" time="0.049">
+  <properties/>
+  <testcase name="fara activitati recente nu estimeaza nicio data" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.008"/>
+  <testcase name="calculeaza procentul din minute" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.016"/>
+  <testcase name="ignora activitatile de dinainte de inceputul obiectivului" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.001"/>
+  <testcase name="obiectivul atins sau cu termenul depasit" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.001"/>
+  <testcase name="compara cu ritmul liniar pana la termen" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.004"/>
+  <testcase name="prea devreme pentru concluzii" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.0"/>
+  <testcase name="fara termen nu compara cu un ritm" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.002"/>
+  <testcase name="zilele ramase pana la termen" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.003"/>
+  <testcase name="estimeaza data de final dupa ritmul recent" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.0"/>
+  <testcase name="stagnare dupa 7 zile fara activitate" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.0"/>
+  <testcase name="cu doua tinte progresul e media lor" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.001"/>
+  <testcase name="ritm in scadere fata de saptamanile dinainte" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.001"/>
+  <testcase name="activitate recenta inseamna ritm normal" classname="md.utm.digitalmirror.domain.GoalProgressTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

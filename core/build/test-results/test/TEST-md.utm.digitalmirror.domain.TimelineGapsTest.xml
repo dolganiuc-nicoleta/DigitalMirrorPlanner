@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.TimelineGapsTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.373Z" hostname="DESKTOP-TVHC3T1" time="0.033">
+  <properties/>
+  <testcase name="ziua plina nu are spatii" classname="md.utm.digitalmirror.domain.TimelineGapsTest" time="0.02"/>
+  <testcase name="ce e in afara ferestrei nu conteaza, ce o taie se taie" classname="md.utm.digitalmirror.domain.TimelineGapsTest" time="0.004"/>
+  <testcase name="spatiile prea scurte nu se arata" classname="md.utm.digitalmirror.domain.TimelineGapsTest" time="0.0"/>
+  <testcase name="spatii intre activitati" classname="md.utm.digitalmirror.domain.TimelineGapsTest" time="0.001"/>
+  <testcase name="intervale suprapuse sau neordonate se unesc" classname="md.utm.digitalmirror.domain.TimelineGapsTest" time="0.0"/>
+  <testcase name="zi goala este un singur spatiu" classname="md.utm.digitalmirror.domain.TimelineGapsTest" time="0.0"/>
+  <testcase name="fereastra goala sau inversata" classname="md.utm.digitalmirror.domain.TimelineGapsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

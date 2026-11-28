@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.MealPlannerTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.573Z" hostname="DESKTOP-TVHC3T1" time="0.114">
+  <properties/>
+  <testcase name="ziua ta - pranzul inainte de plecare, cina dupa ce ajungi acasa" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.084"/>
+  <testcase name="cuvinte asemanatoare nu sunt mese" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.009"/>
+  <testcase name="cina cu mama tine loc de cina" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.001"/>
+  <testcase name="pauza de 10 minute nu e masa" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.001"/>
+  <testcase name="masa generala acopera masa in fereastra careia cade" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.0"/>
+  <testcase name="zi libera - pranzul la mijlocul ferestrei" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.001"/>
+  <testcase name="masa oprita nu apare deloc" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.0"/>
+  <testcase name="fara loc - masa ramane fara loc" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.001"/>
+  <testcase name="pauza de la 11 - pranzul putin mai devreme" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.0"/>
+  <testcase name="pauza de 20 de minute - masa scurta in pauza" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.001"/>
+  <testcase name="cu curs la pranz - masa se muta in pauza" classname="md.utm.digitalmirror.domain.MealPlannerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

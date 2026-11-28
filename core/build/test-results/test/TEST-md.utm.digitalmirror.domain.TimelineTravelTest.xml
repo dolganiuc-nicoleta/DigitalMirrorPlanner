@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.TimelineTravelTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.411Z" hostname="DESKTOP-TVHC3T1" time="0.022">
+  <properties/>
+  <testcase name="fara loc acasa nu presupunem drumuri spre casa" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.008"/>
+  <testcase name="lucrurile de acasa nu cer drum" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.0"/>
+  <testcase name="nu ai timp de drum - semnalat" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.001"/>
+  <testcase name="pauza scurta - drum direct, cat sa ajungi la timp" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.001"/>
+  <testcase name="pregatirea de plecare vine inaintea drumului de acasa" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.0"/>
+  <testcase name="drum necunoscut - fara drum pe linia de timp" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.0"/>
+  <testcase name="planificarea lasa timp si de pregatire inainte de plecare" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.002"/>
+  <testcase name="perechile necesare" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.002"/>
+  <testcase name="ziua ta - drum spre facultate inainte de cursuri si spre casa dupa" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.004"/>
+  <testcase name="intre doua locuri din afara casei nu e pregatire" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.001"/>
+  <testcase name="pauza lunga - treci pe acasa" classname="md.utm.digitalmirror.domain.TimelineTravelTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

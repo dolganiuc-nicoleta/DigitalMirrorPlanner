@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.PeriodReportTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.740Z" hostname="DESKTOP-TVHC3T1" time="0.067">
+  <properties/>
+  <testcase name="comparatia fara perioada anterioara nu da procente" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.007"/>
+  <testcase name="numara starile si calculeaza rata de finalizare" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.001"/>
+  <testcase name="saptamana incepe luni" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.009"/>
+  <testcase name="fara nimic scadent nu exista procent" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.001"/>
+  <testcase name="evolutia da opt saptamani cea mai veche prima" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.001"/>
+  <testcase name="observatiile spun cate s-au facut si cum se compara" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.025"/>
+  <testcase name="timpul lucrat vine doar din activitati finalizate sau partiale" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.002"/>
+  <testcase name="zilele viitoare nu se numara" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.001"/>
+  <testcase name="ce e planificat pentru azi nu conteaza ca nefinalizat dar ce a ramas din zile trecute da" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.002"/>
+  <testcase name="gaseste activitatile amanate repetat si inca nefacute" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.009"/>
+  <testcase name="compara ultimele zile cu cele dinaintea lor" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.001"/>
+  <testcase name="observatii pentru perioada goala si pentru amanari repetate" classname="md.utm.digitalmirror.domain.PeriodReportTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.CardMirrorTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:42.932Z" hostname="DESKTOP-TVHC3T1" time="0.014">
+  <properties/>
+  <testcase name="diferenta mica nu merita spusa" classname="md.utm.digitalmirror.domain.CardMirrorTest" time="0.003"/>
+  <testcase name="prea putine date - nu spunem nimic" classname="md.utm.digitalmirror.domain.CardMirrorTest" time="0.001"/>
+  <testcase name="de obicei iti ia mai mult - din activitati la fel" classname="md.utm.digitalmirror.domain.CardMirrorTest" time="0.002"/>
+  <testcase name="din categorie, cu destule activitati" classname="md.utm.digitalmirror.domain.CardMirrorTest" time="0.001"/>
+  <testcase name="dupa - peste, sub sau cat ai planuit" classname="md.utm.digitalmirror.domain.CardMirrorTest" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

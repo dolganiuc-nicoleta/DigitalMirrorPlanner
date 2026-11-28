@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.ActivityInsightTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:42.567Z" hostname="DESKTOP-TVHC3T1" time="0.156">
+  <properties/>
+  <testcase name="depasire negativa cand termina mai repede" classname="md.utm.digitalmirror.domain.ActivityInsightTest" time="0.127"/>
+  <testcase name="calculeaza durata tipica si depasirea" classname="md.utm.digitalmirror.domain.ActivityInsightTest" time="0.001"/>
+  <testcase name="ignora duratele copiate din plan" classname="md.utm.digitalmirror.domain.ActivityInsightTest" time="0.0"/>
+  <testcase name="o sesiune neobisnuita nu schimba concluzia" classname="md.utm.digitalmirror.domain.ActivityInsightTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

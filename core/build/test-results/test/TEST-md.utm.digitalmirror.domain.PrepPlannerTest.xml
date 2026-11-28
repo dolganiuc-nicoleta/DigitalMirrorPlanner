@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.PrepPlannerTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44Z" hostname="DESKTOP-TVHC3T1" time="0.091">
+  <properties/>
+  <testcase name="zilele sunt de azi pana in ajunul evenimentului" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.003"/>
+  <testcase name="planul respecta ferestrele si pasii se fac in ordine" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.081"/>
+  <testcase name="ferestrele urmeaza ordinea pasilor si ultimul pas ajunge in ultima zi" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.0"/>
+  <testcase name="evenimentul de azi sau din trecut nu are zile" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.001"/>
+  <testcase name="cu o singura zi toti pasii cad in ea" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.001"/>
+  <testcase name="procentul de pregatire nu depaseste 100 si nu numara peste durata pasului" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.001"/>
+  <testcase name="daca fereastra e plina, sesiunea merge mai devreme in loc sa se piarda" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.001"/>
+  <testcase name="sabloanele pastreaza totalul, in sferturi de ora" classname="md.utm.digitalmirror.domain.PrepPlannerTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

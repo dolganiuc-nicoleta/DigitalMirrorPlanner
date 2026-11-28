@@ -1330,7 +1330,7 @@ private fun SleepCheckCard(
             check.partialHealth?.let { p ->
                 Text(
                     "aplicația de somn a salvat doar " +
-                            (if (p.bedtime != null && p.wake != null) "${SleepPlanner.clock(p.bedtime)}–${SleepPlanner.clock(p.wake)}" else "o parte") +
+                            (p.bedtime?.let { b -> p.wake?.let { w -> "${SleepPlanner.clock(b)}–${SleepPlanner.clock(w)}" } } ?: "o parte") +
                             ", așa că îți propun ritmul tău obișnuit",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2035,11 +2035,12 @@ private fun EstimateCard(
 
             // de ce: ce date au stat la baza propunerii
             val why = buildList {
-                if (estimate.activityCount > 0 && estimate.activityTypicalMinutes != null) {
+                val typicalSame = estimate.activityTypicalMinutes
+                if (estimate.activityCount > 0 && typicalSame != null) {
                     add(
                         "${estimate.activityCount} " +
                                 (if (estimate.activityCount == 1) "sesiune la fel" else "sesiuni la fel") +
-                                ", de obicei ${formatDuration(estimate.activityTypicalMinutes)}"
+                                ", de obicei ${formatDuration(typicalSame)}"
                     )
                 }
                 estimate.categoryRatio?.let { ratio ->

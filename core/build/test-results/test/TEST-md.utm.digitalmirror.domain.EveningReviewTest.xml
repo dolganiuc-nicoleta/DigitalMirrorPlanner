@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.EveningReviewTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.390Z" hostname="DESKTOP-TVHC3T1" time="0.033">
+  <properties/>
+  <testcase name="zi obisnuita - nicio intrebare" classname="md.utm.digitalmirror.domain.EveningReviewTest" time="0.018"/>
+  <testcase name="evenimentele fara loc se intreaba o singura data" classname="md.utm.digitalmirror.domain.EveningReviewTest" time="0.006"/>
+  <testcase name="un curs devreme nu e o exceptie - nu se poate muta" classname="md.utm.digitalmirror.domain.EveningReviewTest" time="0.001"/>
+  <testcase name="o sesiune flexibila la 8 te-ar scula devreme - propunem s-o mutam" classname="md.utm.digitalmirror.domain.EveningReviewTest" time="0.002"/>
+  <testcase name="ziua prea plina e semnalata" classname="md.utm.digitalmirror.domain.EveningReviewTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

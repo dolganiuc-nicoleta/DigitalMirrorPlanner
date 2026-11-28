@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.AvailabilityTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:42.797Z" hostname="DESKTOP-TVHC3T1" time="0.046">
+  <properties/>
+  <testcase name="drumul extinde intervalul ocupat" classname="md.utm.digitalmirror.domain.AvailabilityTest" time="0.033"/>
+  <testcase name="ignora blocurile cu sfarsitul inainte de inceput" classname="md.utm.digitalmirror.domain.AvailabilityTest" time="0.003"/>
+  <testcase name="scrie zilele pe scurt" classname="md.utm.digitalmirror.domain.AvailabilityTest" time="0.0"/>
+  <testcase name="intr-o zi libera blocurile nu se aplica" classname="md.utm.digitalmirror.domain.AvailabilityTest" time="0.0"/>
+  <testcase name="blocurile sunt in ordinea in care incep" classname="md.utm.digitalmirror.domain.AvailabilityTest" time="0.005"/>
+  <testcase name="drumul nu iese din zi" classname="md.utm.digitalmirror.domain.AvailabilityTest" time="0.001"/>
+  <testcase name="blocul apare doar in zilele alese" classname="md.utm.digitalmirror.domain.AvailabilityTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

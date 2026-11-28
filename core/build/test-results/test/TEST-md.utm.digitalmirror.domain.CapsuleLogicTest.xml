@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.CapsuleLogicTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:42.886Z" hostname="DESKTOP-TVHC3T1" time="0.034">
+  <properties/>
+  <testcase name="stagnarea conteaza mai mult decat incetinirea" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.006"/>
+  <testcase name="deschisa ramane deschisa chiar daca data nu a venit" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.003"/>
+  <testcase name="fara incetinire nu apare nicio amintire" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.001"/>
+  <testcase name="fara obiective legate nu se spune nimic" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.001"/>
+  <testcase name="schimbarea unui obiectiv" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.003"/>
+  <testcase name="capsula prea noua nu intreaba" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.001"/>
+  <testcase name="in ziua stabilita se poate deschide" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.001"/>
+  <testcase name="cel mult o amintire pe saptamana" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.002"/>
+  <testcase name="zilele acoperite includ prima si ultima zi" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.0"/>
+  <testcase name="inainte de data e sigilata" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.001"/>
+  <testcase name="incetinirea declanseaza amintirea" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.0"/>
+  <testcase name="stagnarea declanseaza amintirea" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.002"/>
+  <testcase name="fara optiunea activata nu se spune nimic" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.001"/>
+  <testcase name="o capsula gata de deschis sau deschisa nu mai e amintita" classname="md.utm.digitalmirror.domain.CapsuleLogicTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

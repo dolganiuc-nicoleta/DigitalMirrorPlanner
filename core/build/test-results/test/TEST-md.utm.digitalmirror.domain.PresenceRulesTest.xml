@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.PresenceRulesTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.106Z" hostname="DESKTOP-TVHC3T1" time="0.018">
+  <properties/>
+  <testcase name="o intrare fara iesire se socoteste pana acum, dar cel mult 12 ore" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.003"/>
+  <testcase name="o trecere de sub 5 minute nu e prezenta" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.008"/>
+  <testcase name="pauza mai mare de 10 minute pastreaza vizitele separate" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.001"/>
+  <testcase name="vizita peste miezul noptii se taie la ziua ceruta" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.001"/>
+  <testcase name="locuri diferite nu se unesc intre ele" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.001"/>
+  <testcase name="minutele se aduna pe locuri" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.001"/>
+  <testcase name="vizitele suprapuse la acelasi loc se unesc fara sa se dubleze" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.001"/>
+  <testcase name="doua vizite la acelasi loc cu pauza mica se unesc" classname="md.utm.digitalmirror.domain.PresenceRulesTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

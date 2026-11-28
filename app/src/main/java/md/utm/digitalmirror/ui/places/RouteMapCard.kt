@@ -246,10 +246,12 @@ private fun SpreadCard(s: TravelEstimator.Spread) {
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             val color = MaterialTheme.colorScheme.onSecondaryContainer
-            if (s.low != null && s.high != null) {
+            val low = s.low
+            val high = s.high
+            if (low != null && high != null) {
                 Text("De obicei ${formatDuration(s.typical)}", style = MaterialTheme.typography.titleMedium, color = color)
                 Text(
-                    if (s.high > s.typical) "uneori până la ${formatDuration(s.high)} (cel mai repede ${formatDuration(s.low)})"
+                    if (high > s.typical) "uneori până la ${formatDuration(high)} (cel mai repede ${formatDuration(low)})"
                     else "aproape mereu la fel",
                     style = MaterialTheme.typography.bodyMedium, color = color
                 )

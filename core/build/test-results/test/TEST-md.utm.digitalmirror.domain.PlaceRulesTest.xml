@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.PlaceRulesTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.872Z" hostname="DESKTOP-TVHC3T1" time="0.014">
+  <properties/>
+  <testcase name="coordonatele trebuie sa fie pe glob" classname="md.utm.digitalmirror.domain.PlaceRulesTest" time="0.003"/>
+  <testcase name="distanta se scrie in metri sau kilometri" classname="md.utm.digitalmirror.domain.PlaceRulesTest" time="0.006"/>
+  <testcase name="raza se tine intre 50 si 500 de metri" classname="md.utm.digitalmirror.domain.PlaceRulesTest" time="0.001"/>
+  <testcase name="locul se poate salva doar cu nume si punct ales" classname="md.utm.digitalmirror.domain.PlaceRulesTest" time="0.001"/>
+  <testcase name="distanta dintre doua puncte apropiate este corecta" classname="md.utm.digitalmirror.domain.PlaceRulesTest" time="0.0"/>
+  <testcase name="un punct la 60 m este in locul cu raza 100 dar nu in cel cu raza 50" classname="md.utm.digitalmirror.domain.PlaceRulesTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.CsvTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.034Z" hostname="DESKTOP-TVHC3T1" time="0.04">
+  <properties/>
+  <testcase name="textul cu separator sau ghilimele se pune intre ghilimele" classname="md.utm.digitalmirror.domain.CsvTest" time="0.021"/>
+  <testcase name="numerele nu primesc apostrof" classname="md.utm.digitalmirror.domain.CsvTest" time="0.005"/>
+  <testcase name="valorile simple raman neschimbate" classname="md.utm.digitalmirror.domain.CsvTest" time="0.009"/>
+  <testcase name="textul care arata a formula primeste apostrof" classname="md.utm.digitalmirror.domain.CsvTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

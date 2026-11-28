@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.CapsuleBetsTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:42.849Z" hostname="DESKTOP-TVHC3T1" time="0.027">
+  <properties/>
+  <testcase name="prea putine activitati - fara estimare" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.005"/>
+  <testcase name="fara date nu spunem nimic" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.01"/>
+  <testcase name="propunerea de ore din ritmul real" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.0"/>
+  <testcase name="somnul la 25 de minute e aproape" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.004"/>
+  <testcase name="40h crezute, 31h lucrate - cu 9h mai putin" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.0"/>
+  <testcase name="subestimarea - mediana, ca o zi ciudata sa nu strice" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.001"/>
+  <testcase name="procentul terminat - mai mult decat ai crezut" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.0"/>
+  <testcase name="propunerea de somn si de terminat" classname="md.utm.digitalmirror.domain.CapsuleBetsTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

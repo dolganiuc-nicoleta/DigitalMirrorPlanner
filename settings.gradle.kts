@@ -24,4 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "DigitalMirrorPlanner"
 include(":app")
+include(":core")      // logica comună: telefonul și desktopul folosesc același cod
  

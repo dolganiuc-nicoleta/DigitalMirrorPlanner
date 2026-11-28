@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.PlanParserTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:43.899Z" hostname="DESKTOP-TVHC3T1" time="0.093">
+  <properties/>
+  <testcase name="desparte la si doar dupa o activitate completa" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.049"/>
+  <testcase name="diseara inseamna azi seara" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.002"/>
+  <testcase name="o durata nu e luata drept ora" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.008"/>
+  <testcase name="un interval orar da si ora si durata" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.006"/>
+  <testcase name="scoate cuvintele de legatura" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.001"/>
+  <testcase name="recunoaste duratele spuse in cuvinte si cifre" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.004"/>
+  <testcase name="un plan complet cu mai multe activitati" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.002"/>
+  <testcase name="text gol sau doar ziua nu da activitati" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.001"/>
+  <testcase name="pastreaza diacriticele din titlu" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.001"/>
+  <testcase name="duratia nu ramane in titlu" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.001"/>
+  <testcase name="recunoaste ziua" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.002"/>
+  <testcase name="ora si durata pot fi spuse impreuna" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.002"/>
+  <testcase name="recunoaste ora de start" classname="md.utm.digitalmirror.domain.PlanParserTest" time="0.01"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

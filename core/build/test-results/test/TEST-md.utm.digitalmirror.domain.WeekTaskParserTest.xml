@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.WeekTaskParserTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.624Z" hostname="DESKTOP-TVHC3T1" time="0.01">
+  <properties/>
+  <testcase name="tot ce se poate spune deodata" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.001"/>
+  <testcase name="sesiunea nu se confunda cu totalul, indiferent de ordine" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.001"/>
+  <testcase name="text gol" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.0"/>
+  <testcase name="fara termen si fara sesiune" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.001"/>
+  <testcase name="in total si termen cu cuvant" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.001"/>
+  <testcase name="fara durata se vede ca lipseste" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.0"/>
+  <testcase name="titlu, total si termen" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.001"/>
+  <testcase name="ore cu zecimala si termen simplu" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.0"/>
+  <testcase name="in sesiuni de la sfarsit" classname="md.utm.digitalmirror.domain.WeekTaskParserTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

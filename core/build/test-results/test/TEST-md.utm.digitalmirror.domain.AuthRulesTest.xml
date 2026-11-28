@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.AuthRulesTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:42.736Z" hostname="DESKTOP-TVHC3T1" time="0.052">
+  <properties/>
+  <testcase name="formularul valid nu are probleme" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.037"/>
+  <testcase name="parola are minimum 6 caractere" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.0"/>
+  <testcase name="succesul sterge esecurile" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.007"/>
+  <testcase name="problem spune primul lucru care lipseste" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.001"/>
+  <testcase name="esecurile din timpul pauzei nu prelungesc pauza" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.001"/>
+  <testcase name="dupa pauza numaratoarea reincepe de la zero" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.0"/>
+  <testcase name="la autentificare parola repetata nu conteaza" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.001"/>
+  <testcase name="e-mailul trebuie sa aiba forma nume@domeniu punct tld" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.001"/>
+  <testcase name="dupa 5 esecuri la rand butonul se blocheaza 30 de secunde" classname="md.utm.digitalmirror.domain.AuthRulesTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

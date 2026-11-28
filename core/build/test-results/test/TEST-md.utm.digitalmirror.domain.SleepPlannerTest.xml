@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="md.utm.digitalmirror.domain.SleepPlannerTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-11-28T15:32:44.276Z" hostname="DESKTOP-TVHC3T1" time="0.042">
+  <properties/>
+  <testcase name="fara istoric - valori implicite" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.003"/>
+  <testcase name="ora aleasa pentru o zi are prioritate" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.001"/>
+  <testcase name="durata peste miezul noptii" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.001"/>
+  <testcase name="perna de seara - nimic flexibil in ultima ora inainte de culcare" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.001"/>
+  <testcase name="lucrurile flexibile incep dupa trezirea obisnuita si dimineata" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.0"/>
+  <testcase name="confirmarea ignora noaptea salvata pe jumatate si propune ritmul obisnuit" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.016"/>
+  <testcase name="o noapte salvata doar pe jumatate nu muta ora obisnuita de trezire" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.002"/>
+  <testcase name="fara istoric - interval implicit" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.002"/>
+  <testcase name="confirmarea propune noaptea din health cand e intreaga" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.002"/>
+  <testcase name="noptile ciudate nu strica media" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.002"/>
+  <testcase name="ora obisnuita de culcare dupa miezul noptii se numara peste 24" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.001"/>
+  <testcase name="ora de culcare - cat dormi de obicei inainte de trezire" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.001"/>
+  <testcase name="zi care incepe devreme - te trezesti mai devreme" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.0"/>
+  <testcase name="zi care incepe tarziu - te trezesti la ora obisnuita" classname="md.utm.digitalmirror.domain.SleepPlannerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
