@@ -159,6 +159,8 @@ object BackupManager {
         db.runInTransaction(Runnable {
             // legăturile dintre tabele se verifică abia la final, deci ordinea nu contează
             sdb.execSQL("PRAGMA defer_foreign_keys = ON")
+            // restaurarea nu e o schimbare a utilizatorului: fără pietre funerare și fără „de trimis” în plus
+            sdb.execSQL("UPDATE sync_meta SET applying = 1")
             val names = tableNames(sdb)
             names.forEach { sdb.execSQL("DELETE FROM `$it`") }
             for (table in names) {
@@ -174,6 +176,7 @@ object BackupManager {
                     sdb.insert(table, SQLiteDatabase.CONFLICT_REPLACE, values)
                 }
             }
+            sdb.execSQL("UPDATE sync_meta SET applying = 0")
         })
 
         // setările
@@ -216,7 +219,9 @@ object BackupManager {
         val names = mutableListOf<String>()
         sdb.query(
             "SELECT name FROM sqlite_master WHERE type = 'table' " +
-                    "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_%' AND name <> 'room_master_table'"
+                    "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_%' AND name <> 'room_master_table' " +
+                    // starea sincronizării e a acestui telefon, nu a datelor
+                    "AND name NOT IN ('sync_meta', 'sync_tombstone')"
         ).use { while (it.moveToNext()) names += it.getString(0) }
         return names
     }

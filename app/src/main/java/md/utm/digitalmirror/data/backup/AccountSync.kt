@@ -88,7 +88,11 @@ object AccountSync {
         repo.runningSession()?.let { ActivityReminders.onActivityClosed(context, it.activityId) }
 
         // clearAllTables nu are voie să ruleze pe firul principal
-        withContext(Dispatchers.IO) { db.clearAllTables() }
+        // golirea nu e o ștergere a utilizatorului: fără pietre funerare (altfel ar șterge datele de pe server)
+        withContext(Dispatchers.IO) {
+            md.utm.digitalmirror.data.db.SyncSchema.quietly(db.openHelper.writableDatabase) { db.clearAllTables() }
+        }
+        md.utm.digitalmirror.data.sync.SyncPrefs.reset(context)
 
         // următorul cont începe de la configurarea inițială, dacă nu are o copie în cloud
         OnboardingPrefs.reset(context)

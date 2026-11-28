@@ -14,7 +14,7 @@ import androidx.room.PrimaryKey
         childColumns = ["categoryId"],
         onDelete = ForeignKey.SET_NULL
     )],
-    indices = [Index("categoryId"), Index("date"), Index("titleKey")]
+    indices = [Index("categoryId"), Index("date"), Index("titleKey"), Index(value = ["uid"], unique = true)]
 )
 data class Activity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -42,7 +42,12 @@ data class Activity(
     val tags: String = "",               // v9 · etichete separate prin virgulă, fără #
     val weekTaskId: Long? = null,        // v10 · sarcina din planul săptămânii din care vine sesiunea
     val placeId: Long? = null,           // v12 · locul unde se desfășoară (din „Locuri”), null = nespecificat
-    val prepStepId: Long? = null         // v16 · pasul din pregătirea unui eveniment din care vine sesiunea
+    val prepStepId: Long? = null,        // v16 · pasul din pregătirea unui eveniment din care vine sesiunea
+    // v23 · sincronizarea între dispozitive (completate de triggerele din SyncSchema, nu de cod)
+    val uid: String? = null,
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val syncedAt: Long = 0,      // updatedAt la ultima potrivire cu serverul; altfel e de trimis
+    @ColumnInfo(defaultValue = "0") val syncVersion: Long = 0
 ) {
     companion object {
         // sursele durate reale; estimatorul învață doar din cele sigure

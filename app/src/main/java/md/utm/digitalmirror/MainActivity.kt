@@ -63,6 +63,15 @@ class MainActivity : ComponentActivity() {
             // zonele locurilor se pierd la repornirea telefonului, așa că le verificăm la fiecare revenire
             GeofenceManager.sync(applicationContext)
         }
+        // ce s-a schimbat pe desktop (sau pe alt telefon) apare când revii în aplicație
+        md.utm.digitalmirror.data.sync.SyncWorker.schedule(applicationContext)
+        md.utm.digitalmirror.data.sync.SyncWorker.runNow(applicationContext)
+    }
+
+    // ce ai schimbat aici pleacă imediat ce lași aplicația, nu abia peste 15 minute
+    override fun onStop() {
+        super.onStop()
+        md.utm.digitalmirror.data.sync.SyncWorker.runNow(applicationContext)
     }
 }
 

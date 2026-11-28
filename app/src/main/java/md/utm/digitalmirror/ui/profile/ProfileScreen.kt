@@ -94,6 +94,39 @@ fun ProfileScreen(
                         }
                         if (email != null) {
                             OutlinedButton(onClick = { confirmSignOut = true }) { Text("Ieși din cont") }
+                            // sincronizarea cu desktopul (și alte dispozitive), prin serverul tău
+                            if (CloudConfig.isConfigured) {
+                                var lastSync by remember { mutableLongStateOf(md.utm.digitalmirror.data.sync.SyncPrefs.lastSync(context)) }
+                                var syncing by remember { mutableStateOf(false) }
+                                var syncMessage by remember { mutableStateOf<String?>(null) }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        syncMessage ?: if (lastSync == 0L) "Încă nesincronizat cu desktopul"
+                                        else "Sincronizat la " + java.time.Instant.ofEpochMilli(lastSync)
+                                            .atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+                                            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TextButton(
+                                        enabled = !syncing,
+                                        onClick = {
+                                            syncing = true
+                                            scope.launch {
+                                                syncMessage = try {
+                                                    val r = md.utm.digitalmirror.data.sync.SyncEngine.sync(context)
+                                                    lastSync = md.utm.digitalmirror.data.sync.SyncPrefs.lastSync(context)
+                                                    "Trimise ${r.pushed}, primite ${r.pulled}" + if (r.conflicts > 0) " · ${r.conflicts} conflicte" else ""
+                                                } catch (e: Exception) {
+                                                    e.message ?: "Sincronizarea nu a mers."
+                                                }
+                                                syncing = false
+                                            }
+                                        }
+                                    ) { Text(if (syncing) "Se sincronizează…" else "Sincronizează acum") }
+                                }
+                            }
                         } else {
                             Button(onClick = onOpenAuth) { Text("Autentifică-te sau creează cont") }
                         }
